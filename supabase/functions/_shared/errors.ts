@@ -20,7 +20,13 @@ export type ErrorCode =
   | "ROOM_FULL"
   | "KICKED"
   | "CODE_GENERATION_FAILED"
-  | "INTERNAL_ERROR";
+  | "INTERNAL_ERROR"
+  // Phase 3 — promote-host / start-game (ARCHITECTURE.md §14)
+  | "NOT_A_MEMBER"
+  | "NOT_HOST"
+  | "NOT_ENOUGH_PLAYERS"
+  | "HOST_STILL_ACTIVE"
+  | "INVALID_ROOM_STATE";
 
 export interface ApiError {
   code: ErrorCode;

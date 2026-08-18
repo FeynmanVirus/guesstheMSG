@@ -11,6 +11,10 @@ export const SETTINGS_BOUNDS = {
   maxPlayers: { min: 2, max: 16, default: 16 },
 } as const;
 
+// Game-rule bound, not a room setting — how many active, non-spectating
+// players start-game requires before the room can leave 'lobby'.
+export const MIN_PLAYERS_TO_START = 2;
+
 // Not host-editable in this phase's UI, but written now (ARCHITECTURE.md
 // §7) so a future start-round/submit-guess phase has a settled formula to
 // read rather than inventing one under time pressure.

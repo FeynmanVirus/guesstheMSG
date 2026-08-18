@@ -2,27 +2,30 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { supabase } from "@/lib/supabase/client";
-import { avatarSrc, DEFAULT_AVATAR_ID, isValidAvatarId, type AvatarId } from "@/lib/avatars";
+import { useRoomChannel } from "@/lib/room/use-room-channel";
+import { usePresenceGrace } from "@/lib/room/use-presence-grace";
+import { useHostHeartbeat } from "@/lib/room/use-host-heartbeat";
+import { useHostWatchdog } from "@/lib/room/use-host-watchdog";
+import { PlayerList } from "@/components/room/player-list";
+import { StartGameButton } from "@/components/room/start-game-button";
+import { WaitingForHost } from "@/components/room/waiting-for-host";
 
 interface RoomLobbyProps {
   code: string;
 }
 
-interface Seat {
-  displayName: string;
-  avatarId: AvatarId;
-  isHost: boolean;
-}
+type BootstrapPhase = "loading" | "redirecting" | "ready";
 
-// Minimal Phase-2 stub: confirms create/join actually seated the player
-// correctly. No Presence, no Start button, no share link/QR — that's a
-// later phase (DESIGN.md §2.3 is the full target).
+// Orchestrator: the bootstrap below is unchanged from the Phase 2 stub
+// (session -> room by code -> own players row -> redirect home on any miss,
+// RLS doing the membership gate). Everything past that point is new —
+// live presence, host heartbeat/migration, and the Start Game flow.
 export function RoomLobby({ code }: RoomLobbyProps) {
   const router = useRouter();
-  const [seat, setSeat] = useState<Seat | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "redirecting">("loading");
+  const [bootstrapPhase, setBootstrapPhase] = useState<BootstrapPhase>("loading");
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,7 +36,7 @@ export function RoomLobby({ code }: RoomLobbyProps) {
       } = await supabase.auth.getSession();
       if (!session) {
         if (!cancelled) {
-          setStatus("redirecting");
+          setBootstrapPhase("redirecting");
           router.replace(`/?code=${code}`);
         }
         return;
@@ -41,17 +44,11 @@ export function RoomLobby({ code }: RoomLobbyProps) {
 
       // RLS: rooms_select_member is gated on room membership. No row back
       // means "not a member of this room" — not a special error case, just
-      // the membership gate doing its job — so the visitor goes home to
-      // join properly instead of seeing a broken page.
-      const { data: room } = await supabase
-        .from("rooms")
-        .select("id")
-        .eq("code", code)
-        .maybeSingle();
-
+      // the membership gate doing its job.
+      const { data: room } = await supabase.from("rooms").select("id").eq("code", code).maybeSingle();
       if (!room) {
         if (!cancelled) {
-          setStatus("redirecting");
+          setBootstrapPhase("redirecting");
           router.replace(`/?code=${code}`);
         }
         return;
@@ -59,26 +56,22 @@ export function RoomLobby({ code }: RoomLobbyProps) {
 
       const { data: player } = await supabase
         .from("players")
-        .select("display_name, avatar_id, is_host")
+        .select("id")
         .eq("room_id", room.id)
         .eq("auth_user_id", session.user.id)
         .maybeSingle();
-
       if (!player) {
         if (!cancelled) {
-          setStatus("redirecting");
+          setBootstrapPhase("redirecting");
           router.replace(`/?code=${code}`);
         }
         return;
       }
 
       if (!cancelled) {
-        setSeat({
-          displayName: player.display_name,
-          avatarId: isValidAvatarId(player.avatar_id) ? player.avatar_id : DEFAULT_AVATAR_ID,
-          isHost: player.is_host,
-        });
-        setStatus("ready");
+        setRoomId(room.id);
+        setMyPlayerId(player.id);
+        setBootstrapPhase("ready");
       }
     })();
 
@@ -87,7 +80,21 @@ export function RoomLobby({ code }: RoomLobbyProps) {
     };
   }, [code, router]);
 
-  if (status !== "ready" || !seat) {
+  const { players, room, presentIds, presenceSynced } = useRoomChannel(code, roomId, myPlayerId);
+  const offlineIds = usePresenceGrace(
+    players.map((p) => p.id),
+    presentIds,
+    presenceSynced,
+  );
+
+  const me = players.find((p) => p.id === myPlayerId) ?? null;
+  const host = players.find((p) => p.isHost) ?? null;
+  const isHost = me?.isHost ?? false;
+
+  useHostHeartbeat(myPlayerId, isHost);
+  useHostWatchdog({ players, presentIds, presenceSynced, myPlayerId, isHost, roomCode: code });
+
+  if (bootstrapPhase !== "ready" || !room || !me) {
     return (
       <div className="flex flex-1 items-center justify-center px-6 py-16">
         <p className="text-ink-muted">Loading…</p>
@@ -95,30 +102,43 @@ export function RoomLobby({ code }: RoomLobbyProps) {
     );
   }
 
+  // Best-effort before the first presence sync lands — avoids a false "0
+  // players present" flash while the socket is still connecting.
+  const presentPlayerCount = presenceSynced
+    ? players.filter((p) => presentIds.has(p.id)).length
+    : players.length;
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 py-16">
-      <div className="doodle-card w-full max-w-md space-y-6 p-6 text-center sm:p-8">
-        <div>
+      <div className="doodle-card w-full max-w-md space-y-6 p-6 sm:p-8">
+        <div className="text-center">
           <p className="text-sm text-ink-muted">Room code</p>
-          <p className="font-heading text-4xl font-semibold tracking-wider text-ink">{code}</p>
+          <p className="font-heading text-3xl font-semibold tracking-wider text-ink">{code}</p>
         </div>
 
-        <div className="flex flex-col items-center gap-2">
-          <Image
-            src={avatarSrc(seat.avatarId)}
-            alt=""
-            width={72}
-            height={72}
-            className="size-18 rounded-full border-2 border-ink"
-            unoptimized
-          />
-          <p className="font-medium text-ink">
-            {seat.displayName}
-            {seat.isHost && <span className="ml-1 text-sun">★ host</span>}
-          </p>
-        </div>
+        {room.status === "in_progress" ? (
+          // Seam: the round-loop UI lands here in a future phase.
+          <p className="text-center text-ink-muted">Game starting…</p>
+        ) : (
+          <>
+            <PlayerList players={players} myPlayerId={myPlayerId} offlineIds={offlineIds} />
 
-        <p className="text-ink-muted">Waiting for other players to join…</p>
+            {me.isSpectator && (
+              <p className="text-sm text-ink-muted">
+                You&apos;re spectating — you&apos;ll join at the next round.
+              </p>
+            )}
+
+            {isHost ? (
+              <StartGameButton roomCode={code} presentPlayerCount={presentPlayerCount} />
+            ) : (
+              <WaitingForHost
+                hostName={host?.displayName ?? null}
+                hostOffline={!!host && offlineIds.has(host.id)}
+              />
+            )}
+          </>
+        )}
       </div>
     </div>
   );

@@ -31,7 +31,7 @@ Submitting creates the room in `lobby` status and lands the host in the Lobby sc
 - **Host-only** "Start Game" button. The game never auto-starts — the host decides when everyone's in. No countdown-to-autostart either; this is an explicit rule from the product spec, not just a default.
 - Non-host players see a "waiting for host to start" state.
 
-**Phase 2 status:** `/room/[code]` currently ships only a minimal stub of this screen — room code, the viewer's own name/avatar, and a static "waiting for other players" line, enough to confirm create/join actually seated the player correctly. No Presence subscription, no live player list, no Start button, no share link/QR yet — those land in a later phase that builds this screen out fully.
+**Phase 3 status:** live now — room code, a real-time player list (name, avatar, host badge, connected/disconnected via Presence, `DISCONNECT_UI_GRACE_MS`-delayed so a refresh never flickers), a host-only Start Game button disabled under 2 present players, host migration when the host disconnects (`ARCHITECTURE.md` §11). Still missing: shareable link/QR (§2.6 remains a stub) and the "system chat message" narration of a host change (no chat UI exists yet).
 
 ### 2.4 Round loop (repeats N times)
 Layout: single column, emoji sequence in a centered focal card, chat/guess box below it, leaderboard visible alongside (collapses under the fold on narrow mobile, but never fully hidden — players want to see their rank mid-round).

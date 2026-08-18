@@ -133,7 +133,12 @@ Deno.serve(async (req) => {
   if (existingPlayer) {
     const { error: updateError } = await admin
       .from("players")
-      .update({ display_name: displayName, avatar_id: avatarId, is_connected: true })
+      .update({
+        display_name: displayName,
+        avatar_id: avatarId,
+        is_connected: true,
+        last_seen_at: new Date().toISOString(),
+      })
       .eq("id", existingPlayer.id);
 
     if (updateError) {
@@ -156,6 +161,7 @@ Deno.serve(async (req) => {
         is_connected: true,
         is_spectator: spectator,
         status: "active",
+        last_seen_at: new Date().toISOString(),
       })
       .select("id")
       .single();
@@ -174,7 +180,12 @@ Deno.serve(async (req) => {
       }
       await admin
         .from("players")
-        .update({ display_name: displayName, avatar_id: avatarId, is_connected: true })
+        .update({
+          display_name: displayName,
+          avatar_id: avatarId,
+          is_connected: true,
+          last_seen_at: new Date().toISOString(),
+        })
         .eq("id", raced.id);
       playerId = raced.id;
       isHost = raced.is_host;
