@@ -20,6 +20,7 @@ import { saveIdentity, saveRoomCode } from "@/lib/identity";
 import type { AvatarId } from "@/lib/avatars";
 import { parseCustomWords } from "@shared/custom-words";
 import { SETTINGS_BOUNDS } from "@shared/settings";
+import { MIXED_CATEGORY_ID } from "@shared/categories";
 
 interface CreateRoomFormProps {
   displayName: string;
@@ -76,6 +77,14 @@ export function CreateRoomForm({ displayName, avatarId }: CreateRoomFormProps) {
   }, []);
 
   const customWordsPreview = useMemo(() => parseCustomWords(customWords), [customWords]);
+
+  const categoryOptions = useMemo(
+    () => [
+      { id: MIXED_CATEGORY_ID, name: "🎲 Mixed (all categories)" },
+      ...(categories ?? []),
+    ],
+    [categories],
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -144,12 +153,16 @@ export function CreateRoomForm({ displayName, avatarId }: CreateRoomFormProps) {
 
       <div className="space-y-1.5">
         <Label htmlFor="room-category">Category</Label>
-        <Select value={categoryId} onValueChange={(v) => setCategoryId(v ?? "")}>
+        <Select
+          items={categoryOptions.map((c) => ({ value: c.id, label: c.name }))}
+          value={categoryId}
+          onValueChange={(v) => setCategoryId(v ?? "")}
+        >
           <SelectTrigger id="room-category" className="w-full">
             <SelectValue placeholder={categories === null ? "Loading…" : "Choose a category"} />
           </SelectTrigger>
           <SelectContent>
-            {(categories ?? []).map((c) => (
+            {categoryOptions.map((c) => (
               <SelectItem key={c.id} value={c.id}>
                 {c.name}
               </SelectItem>

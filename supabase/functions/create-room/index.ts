@@ -19,6 +19,7 @@ import { parseCustomWords } from "../_shared/custom-words.ts";
 import { clampSettings } from "../_shared/settings.ts";
 import { isValidAvatarId, DEFAULT_AVATAR_ID } from "../_shared/avatars.ts";
 import { generateRoomCode } from "../_shared/room-code.ts";
+import { MIXED_CATEGORY_ID } from "../_shared/categories.ts";
 
 const MAX_CODE_ATTEMPTS = 5;
 
@@ -105,17 +106,22 @@ Deno.serve(async (req) => {
 
   const admin = createAdminClient();
 
-  // --- Category must be a real, global category -----------------------
-  const { data: category, error: categoryError } = await admin
-    .from("categories")
-    .select("id")
-    .eq("id", categoryId)
-    .eq("is_custom", false)
-    .is("room_id", null)
-    .maybeSingle();
+  // --- Category must be a real, global category — unless the caller asked
+  // for the "mixed" sentinel, which stores as no single category and pools
+  // every global category's words at round time (round-tick's createRound).
+  const isMixed = categoryId === MIXED_CATEGORY_ID;
+  if (!isMixed) {
+    const { data: category, error: categoryError } = await admin
+      .from("categories")
+      .select("id")
+      .eq("id", categoryId)
+      .eq("is_custom", false)
+      .is("room_id", null)
+      .maybeSingle();
 
-  if (categoryError || !category) {
-    return jsonErr("CATEGORY_NOT_FOUND", "That category doesn't exist.", CORS_HEADERS);
+    if (categoryError || !category) {
+      return jsonErr("CATEGORY_NOT_FOUND", "That category doesn't exist.", CORS_HEADERS);
+    }
   }
 
   // --- Password hash (server-side, pgcrypto/crypt() — CLAUDE.md rule 6) ---
@@ -140,7 +146,7 @@ Deno.serve(async (req) => {
         name: roomName,
         password_hash: passwordHash,
         status: "lobby",
-        category_id: categoryId,
+        category_id: isMixed ? null : categoryId,
         settings,
       })
       .select("id, code")

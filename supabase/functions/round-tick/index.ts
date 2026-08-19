@@ -143,10 +143,26 @@ Deno.serve(async (req) => {
       .eq("room_id", room!.id)
       .eq("is_custom", true);
 
+    // A null category_id means the room was created with the "mixed"
+    // sentinel (create-room/index.ts) — pool words from every global
+    // category instead of just one.
+    const resolvedCategoryId = session!.category_id ?? room!.category_id;
+    let globalCategoryIds: string[];
+    if (resolvedCategoryId) {
+      globalCategoryIds = [resolvedCategoryId];
+    } else {
+      const { data: allCategories } = await admin
+        .from("categories")
+        .select("id")
+        .eq("is_custom", false)
+        .is("room_id", null);
+      globalCategoryIds = (allCategories ?? []).map((c) => c.id);
+    }
+
     const categoryIds = [
-      session!.category_id ?? room!.category_id,
+      ...globalCategoryIds,
       ...(customCategories ?? []).map((c) => c.id),
-    ].filter((id): id is string => !!id);
+    ];
 
     if (categoryIds.length === 0) return endGame("pool_exhausted");
 
