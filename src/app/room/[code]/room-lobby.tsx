@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useRoomChannel } from "@/lib/room/use-room-channel";
 import { usePresenceGrace } from "@/lib/room/use-presence-grace";
 import { useHostHeartbeat } from "@/lib/room/use-host-heartbeat";
 import { useHostWatchdog } from "@/lib/room/use-host-watchdog";
+import { useRoomStore, sortForLobby } from "@/lib/room/store";
 import { PlayerList } from "@/components/room/player-list";
 import { StartGameButton } from "@/components/room/start-game-button";
 import { WaitingForHost } from "@/components/room/waiting-for-host";
+import { RoomGame } from "@/app/room/[code]/room-game";
+import { GameResults } from "@/components/game/game-results";
 
 interface RoomLobbyProps {
   code: string;
@@ -19,8 +22,8 @@ type BootstrapPhase = "loading" | "redirecting" | "ready";
 
 // Orchestrator: the bootstrap below is unchanged from the Phase 2 stub
 // (session -> room by code -> own players row -> redirect home on any miss,
-// RLS doing the membership gate). Everything past that point is new —
-// live presence, host heartbeat/migration, and the Start Game flow.
+// RLS doing the membership gate). Past that it renders one of three screens
+// off rooms.status — lobby, the round loop, or the results.
 export function RoomLobby({ code }: RoomLobbyProps) {
   const router = useRouter();
   const [bootstrapPhase, setBootstrapPhase] = useState<BootstrapPhase>("loading");
@@ -80,12 +83,18 @@ export function RoomLobby({ code }: RoomLobbyProps) {
     };
   }, [code, router]);
 
-  const { players, room, presentIds, presenceSynced } = useRoomChannel(code, roomId, myPlayerId);
-  const offlineIds = usePresenceGrace(
-    players.map((p) => p.id),
-    presentIds,
-    presenceSynced,
-  );
+  // The channel writes into the Zustand store; everything below reads from it.
+  useRoomChannel(code, roomId, myPlayerId);
+
+  const playersMap = useRoomStore((s) => s.players);
+  const room = useRoomStore((s) => s.room);
+  const presentIds = useRoomStore((s) => s.presentIds);
+  const presenceSynced = useRoomStore((s) => s.presenceSynced);
+
+  const players = useMemo(() => sortForLobby(Array.from(playersMap.values())), [playersMap]);
+  const playerIds = useMemo(() => players.map((p) => p.id), [players]);
+
+  const offlineIds = usePresenceGrace(playerIds, presentIds, presenceSynced);
 
   const me = players.find((p) => p.id === myPlayerId) ?? null;
   const host = players.find((p) => p.isHost) ?? null;
@@ -108,17 +117,22 @@ export function RoomLobby({ code }: RoomLobbyProps) {
     ? players.filter((p) => presentIds.has(p.id)).length
     : players.length;
 
+  const inGame = room.status === "in_progress";
+
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-6 py-16">
-      <div className="doodle-card w-full max-w-md space-y-6 p-6 sm:p-8">
+    <div className="flex flex-1 flex-col items-center px-6 py-10">
+      <div
+        className={`doodle-card w-full space-y-6 p-6 sm:p-8 ${inGame ? "max-w-3xl" : "max-w-md"}`}
+      >
         <div className="text-center">
           <p className="text-sm text-ink-muted">Room code</p>
           <p className="font-heading text-3xl font-semibold tracking-wider text-ink">{code}</p>
         </div>
 
-        {room.status === "in_progress" ? (
-          // Seam: the round-loop UI lands here in a future phase.
-          <p className="text-center text-ink-muted">Game starting…</p>
+        {inGame ? (
+          <RoomGame roomCode={code} myPlayerId={myPlayerId} isSpectator={me.isSpectator} />
+        ) : room.status === "ended" ? (
+          <GameResults myPlayerId={myPlayerId} />
         ) : (
           <>
             <PlayerList players={players} myPlayerId={myPlayerId} offlineIds={offlineIds} />

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { DEFAULT_AVATAR_ID, isValidAvatarId } from "@/lib/avatars";
 import { presenceTopic, type RoomPresence } from "@shared/presence";
-import type { RoomInfo, RoomPlayer, RoomStatus } from "@/lib/room/types";
+import { useRoomStore } from "@/lib/room/store";
+import type { ChatMessage, RoomPlayer, RoomStatus, RoundInfo } from "@/lib/room/types";
 
 type PlayerRow = {
   id: string;
@@ -14,7 +15,34 @@ type PlayerRow = {
   is_spectator: boolean;
   status: "active" | "kicked";
   joined_at: string;
+  score: number;
 };
+
+type RoundRow = {
+  id: string;
+  round_number: number;
+  emoji_sequence: string;
+  started_at: string;
+  ends_at: string;
+  revealed_at: string | null;
+  revealed_answer: string | null;
+};
+
+type ChatRow = {
+  id: string;
+  player_id: string;
+  body: string;
+  kind: "chat" | "guess" | "system";
+  visibility: "all" | "correct";
+  round_id: string | null;
+  created_at: string;
+};
+
+const PLAYER_COLUMNS =
+  "id, display_name, avatar_id, is_host, is_spectator, status, joined_at, score";
+const ROUND_COLUMNS =
+  "id, round_number, emoji_sequence, started_at, ends_at, revealed_at, revealed_answer";
+const CHAT_COLUMNS = "id, player_id, body, kind, visibility, round_id, created_at";
 
 function mapPlayer(row: PlayerRow): RoomPlayer {
   return {
@@ -25,58 +53,50 @@ function mapPlayer(row: PlayerRow): RoomPlayer {
     isSpectator: row.is_spectator,
     status: row.status,
     joinedAt: row.joined_at,
+    score: row.score ?? 0,
   };
 }
 
-function playersEqual(a: RoomPlayer, b: RoomPlayer): boolean {
-  return (
-    a.displayName === b.displayName &&
-    a.avatarId === b.avatarId &&
-    a.isHost === b.isHost &&
-    a.isSpectator === b.isSpectator &&
-    a.status === b.status &&
-    a.joinedAt === b.joinedAt
-  );
+function mapRound(row: RoundRow): RoundInfo {
+  return {
+    id: row.id,
+    roundNumber: row.round_number,
+    emojiSequence: row.emoji_sequence,
+    startedAt: row.started_at,
+    endsAt: row.ends_at,
+    revealedAt: row.revealed_at,
+    revealedAnswer: row.revealed_answer,
+  };
 }
 
-function sortPlayers(players: RoomPlayer[]): RoomPlayer[] {
-  return [...players].sort((a, b) => {
-    if (a.isHost !== b.isHost) return a.isHost ? -1 : 1;
-    return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
-  });
-}
-
-interface UseRoomChannelResult {
-  players: RoomPlayer[];
-  room: RoomInfo | null;
-  presentIds: Set<string>;
-  presenceSynced: boolean;
-  connection: "connecting" | "live" | "error";
+function mapMessage(row: ChatRow): ChatMessage {
+  return {
+    id: row.id,
+    playerId: row.player_id,
+    body: row.body,
+    kind: row.kind,
+    visibility: row.visibility,
+    roundId: row.round_id,
+    createdAt: row.created_at,
+  };
 }
 
 // Owns the room:<code> Realtime channel — presence (who's connected right
-// now) plus Postgres Changes on `players`/`rooms` (durable state). One
-// channel per room, created inside this effect (not module scope) so React
-// 19 StrictMode's double-mount can't produce two channels on one topic.
-export function useRoomChannel(
-  code: string,
-  roomId: string | null,
-  myPlayerId: string | null,
-): UseRoomChannelResult {
-  const [playersMap, setPlayersMap] = useState<Map<string, RoomPlayer>>(new Map());
-  const [room, setRoom] = useState<RoomInfo | null>(null);
-  const [presentIds, setPresentIds] = useState<Set<string>>(new Set());
-  const [presenceSynced, setPresenceSynced] = useState(false);
-  const [connection, setConnection] = useState<"connecting" | "live" | "error">("connecting");
-
+// now) plus Postgres Changes on players/rooms/rounds/chat_messages (durable
+// state). One channel per room, created inside this effect (not module
+// scope) so React 19 StrictMode's double-mount can't produce two channels
+// on one topic.
+//
+// All four subscriptions filter on a column that never changes for the
+// lifetime of the page, so nothing has to re-subscribe when a round rolls
+// over. chat_messages carries the winners'-chat rows, and RLS decides
+// per-subscriber whether they're delivered at all — there is no client-side
+// filtering to bypass.
+export function useRoomChannel(code: string, roomId: string | null, myPlayerId: string | null) {
   useEffect(() => {
     if (!roomId || !myPlayerId) return;
 
-    // No reset of presenceSynced/connection here: roomId/myPlayerId are set
-    // once by the bootstrap and never change for the lifetime of this
-    // component, so this effect only ever runs once (plus unmount cleanup)
-    // — their useState initial values already cover the "connecting" state.
-
+    const store = useRoomStore.getState();
     let cancelled = false;
 
     const channel = supabase.channel(presenceTopic(code), {
@@ -85,13 +105,13 @@ export function useRoomChannel(
 
     function applyPresentIds() {
       const state = channel.presenceState<RoomPresence>();
-      setPresentIds(new Set(Object.keys(state)));
+      useRoomStore.getState().setPresence(new Set(Object.keys(state)));
     }
 
     channel
       .on("presence", { event: "sync" }, () => {
-        applyPresentIds();
-        setPresenceSynced(true);
+        const state = channel.presenceState<RoomPresence>();
+        useRoomStore.getState().setPresence(new Set(Object.keys(state)), true);
       })
       .on("presence", { event: "join" }, applyPresentIds)
       .on("presence", { event: "leave" }, applyPresentIds)
@@ -101,23 +121,10 @@ export function useRoomChannel(
         (payload) => {
           if (payload.eventType === "DELETE") {
             const oldId = (payload.old as { id?: string }).id;
-            if (!oldId) return;
-            setPlayersMap((prev) => {
-              if (!prev.has(oldId)) return prev;
-              const next = new Map(prev);
-              next.delete(oldId);
-              return next;
-            });
+            if (oldId) useRoomStore.getState().removePlayer(oldId);
             return;
           }
-          const next = mapPlayer(payload.new as PlayerRow);
-          setPlayersMap((prev) => {
-            const existing = prev.get(next.id);
-            if (existing && playersEqual(existing, next)) return prev; // last_seen_at-only heartbeat delta — skip
-            const updated = new Map(prev);
-            updated.set(next.id, next);
-            return updated;
-          });
+          useRoomStore.getState().upsertPlayer(mapPlayer(payload.new as PlayerRow));
         },
       )
       .on(
@@ -125,34 +132,99 @@ export function useRoomChannel(
         { event: "*", schema: "public", table: "rooms", filter: `id=eq.${roomId}` },
         (payload) => {
           if (payload.eventType === "DELETE") return;
-          const row = payload.new as { id: string; status: RoomStatus };
-          setRoom({ id: row.id, status: row.status });
+          const row = payload.new as {
+            id: string;
+            status: RoomStatus;
+            settings: { rounds?: number } | null;
+          };
+          useRoomStore.getState().setRoom({
+            id: row.id,
+            status: row.status,
+            totalRounds: row.settings?.rounds ?? useRoomStore.getState().room?.totalRounds ?? 0,
+          });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "rounds", filter: `room_id=eq.${roomId}` },
+        (payload) => {
+          if (payload.eventType === "DELETE") return;
+          const row = payload.new as RoundRow;
+          const next = mapRound(row);
+
+          // Clock-skew correction, sampled only from a round we just saw
+          // created. started_at is the server's clock; the gap to ours is
+          // the offset, minus one network hop (which biases the countdown
+          // very slightly generous — the right direction to be wrong in).
+          //
+          // Guarded on freshness because the same handler also sees UPDATEs
+          // (the reveal), where started_at is legitimately in the past and
+          // would produce a garbage offset.
+          if (payload.eventType === "INSERT") {
+            const drift = new Date(row.started_at).getTime() - Date.now();
+            if (Math.abs(drift) > 1000) useRoomStore.getState().setServerOffset(drift);
+          }
+
+          // Ignore a stale row arriving after a newer one (out-of-order
+          // delivery): only move forward, or update the round we're on.
+          const current = useRoomStore.getState().round;
+          if (current && current.roundNumber > next.roundNumber) return;
+          useRoomStore.getState().setRound(next);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "chat_messages", filter: `room_id=eq.${roomId}` },
+        (payload) => {
+          useRoomStore.getState().addMessage(mapMessage(payload.new as ChatRow));
         },
       )
       .subscribe(async (status) => {
         if (cancelled) return;
         if (status === "SUBSCRIBED") {
-          setConnection("live");
+          useRoomStore.getState().setConnection("live");
           await channel.track({ playerId: myPlayerId } satisfies RoomPresence);
 
-          const [{ data: playerRows }, { data: roomRow }] = await Promise.all([
-            supabase
-              .from("players")
-              .select("id, display_name, avatar_id, is_host, is_spectator, status, joined_at")
-              .eq("room_id", roomId),
-            supabase.from("rooms").select("id, status").eq("id", roomId).single(),
-          ]);
+          // Catch-up read: a refresh or a late join has to land mid-round
+          // with the right timer and the messages it's allowed to see.
+          const [{ data: playerRows }, { data: roomRow }, { data: roundRows }, { data: chatRows }] =
+            await Promise.all([
+              supabase.from("players").select(PLAYER_COLUMNS).eq("room_id", roomId),
+              supabase.from("rooms").select("id, status, settings").eq("id", roomId).single(),
+              supabase
+                .from("rounds")
+                .select(ROUND_COLUMNS)
+                .eq("room_id", roomId)
+                .order("started_at", { ascending: false })
+                .limit(1),
+              supabase
+                .from("chat_messages")
+                .select(CHAT_COLUMNS)
+                .eq("room_id", roomId)
+                .order("created_at", { ascending: false })
+                .limit(50),
+            ]);
           if (cancelled) return;
+
           if (playerRows) {
-            setPlayersMap((prev) => {
-              const next = new Map(prev);
-              for (const row of playerRows as PlayerRow[]) next.set(row.id, mapPlayer(row));
-              return next;
+            useRoomStore.getState().mergePlayers((playerRows as PlayerRow[]).map(mapPlayer));
+          }
+          if (roomRow) {
+            const settings = roomRow.settings as { rounds?: number } | null;
+            useRoomStore.getState().setRoom({
+              id: roomRow.id,
+              status: roomRow.status as RoomStatus,
+              totalRounds: settings?.rounds ?? 0,
             });
           }
-          if (roomRow) setRoom({ id: roomRow.id, status: roomRow.status as RoomStatus });
+          if (roundRows && roundRows.length > 0) {
+            useRoomStore.getState().setRound(mapRound(roundRows[0] as RoundRow));
+          }
+          if (chatRows) {
+            useRoomStore.getState().mergeMessages((chatRows as ChatRow[]).map(mapMessage));
+          }
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          setConnection("error");
+          useRoomStore.getState().setConnection("error");
         }
       });
 
@@ -160,14 +232,7 @@ export function useRoomChannel(
       cancelled = true;
       channel.untrack();
       supabase.removeChannel(channel);
+      store.reset();
     };
   }, [code, roomId, myPlayerId]);
-
-  return {
-    players: sortPlayers(Array.from(playersMap.values())),
-    room,
-    presentIds,
-    presenceSynced,
-    connection,
-  };
 }

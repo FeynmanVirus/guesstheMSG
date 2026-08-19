@@ -15,6 +15,12 @@ export const SETTINGS_BOUNDS = {
 // players start-game requires before the room can leave 'lobby'.
 export const MIN_PLAYERS_TO_START = 2;
 
+// How long the per-round recap (answer + who got it first) stays up before
+// round-tick advances. DESIGN.md §2.5: "a few seconds, not skippable by
+// players". Both round-tick and the client's due-time calculation read this,
+// so they can't drift apart.
+export const RECAP_SECONDS = 5;
+
 // Not host-editable in this phase's UI, but written now (ARCHITECTURE.md
 // §7) so a future start-round/submit-guess phase has a settled formula to
 // read rather than inventing one under time pressure.
