@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AlarmClock } from "lucide-react";
 import { useRoomStore } from "@/lib/room/store";
+import { playTick } from "@/lib/sounds";
 
 const URGENT_SECONDS = 10;
 
@@ -32,6 +33,14 @@ export function RoundTimer({ endsAt }: RoundTimerProps) {
   }, [endsAt, serverOffsetMs]);
 
   const urgent = remaining <= URGENT_SECONDS;
+
+  // `remaining` is integer seconds, so React bails out of a same-value
+  // setState — this effect only re-fires on an actual second transition,
+  // not every 250ms tick. Silent once the round hits 0 (the recap takes
+  // over from there).
+  useEffect(() => {
+    if (urgent && remaining > 0) playTick();
+  }, [remaining, urgent]);
 
   return (
     <div

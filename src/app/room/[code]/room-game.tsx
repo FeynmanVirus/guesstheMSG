@@ -1,5 +1,6 @@
 "use client";
 
+import { motion, AnimatePresence } from "motion/react";
 import { useRoundTick } from "@/lib/room/use-round-tick";
 import { useRoomStore } from "@/lib/room/store";
 import { EmojiCard } from "@/components/game/emoji-card";
@@ -39,22 +40,37 @@ export function RoomGame({ roomCode, myPlayerId, isSpectator }: RoomGameProps) {
   return (
     <div className="grid grid-cols-1 gap-5 sm:grid-cols-[1fr_260px]">
       <div className="space-y-4 sm:col-start-1">
-        <EmojiCard
-          key={`${round.id}-card`}
-          emojiSequence={round.emojiSequence}
-          roundNumber={round.roundNumber}
-          totalRounds={totalRounds}
-        />
-        {/* All three keyed off round.id (React only requires uniqueness
-            among siblings, hence the per-role suffix) so a new round
-            remounts them fresh — timer restarts, "solved" clears — instead
-            of an effect pushing a reset. */}
-        {live && <RoundTimer key={`${round.id}-timer`} endsAt={round.endsAt} />}
+        {/* The emoji card + timer swap out as a unit between rounds — exit
+            the old round, then enter the new one. mode="wait" keeps them
+            from overlapping mid-transition. GuessInput/MessageStream stay
+            outside this swap on purpose: mode="wait" would otherwise blank
+            the input (and drop focus) for the length of the exit, and the
+            input already resets correctly via its own key={round.id}
+            remount below. */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={round.id}
+            initial={{ opacity: 0, y: 12, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.98, transition: { duration: 0.18 } }}
+            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+            className="space-y-4"
+          >
+            <EmojiCard
+              emojiSequence={round.emojiSequence}
+              roundNumber={round.roundNumber}
+              totalRounds={totalRounds}
+            />
+            {live && <RoundTimer endsAt={round.endsAt} />}
+          </motion.div>
+        </AnimatePresence>
+
         <GuessInput
           key={`${round.id}-input`}
           roomCode={roomCode}
           disabled={!live}
           isSpectator={isSpectator}
+          myPlayerId={myPlayerId}
         />
         <MessageStream myPlayerId={myPlayerId} />
       </div>
@@ -63,7 +79,9 @@ export function RoomGame({ roomCode, myPlayerId, isSpectator }: RoomGameProps) {
         <Leaderboard myPlayerId={myPlayerId} />
       </div>
 
-      {!live && <RoundRecap key={round.id} round={round} />}
+      {/* RoundRecap's own fade in/out now lives here, one level up, since a
+          component can't animate its own unmount by wrapping itself. */}
+      <AnimatePresence>{!live && <RoundRecap key={round.id} round={round} />}</AnimatePresence>
     </div>
   );
 }

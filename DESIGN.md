@@ -39,6 +39,7 @@ Layout: single column, emoji sequence in a centered focal card, chat/guess box b
 - **Emoji sequence** appears centered, large, as soon as the round starts.
 - **Timer**: visible, server-synced countdown (see `ARCHITECTURE.md` §6 — client never owns the duration). Urgency styling kicks in as time runs low (color shift toward Accent Coral, subtle pulse — no jarring flashing).
 - **Chat/guess box**: one input serves both normal chat and guesses — every submitted message is evaluated server-side (`submit-guess`) as a potential guess. **Two-tier stream, not one shared feed with highlighted rows** (revised from the original spec): a correct guess never republishes its text — everyone sees a system row, `"<name> guessed correctly +<points>"`, name and points only, never the answer. That player's *subsequent* messages move to a winners' chat visible only to other players who have also guessed correctly that round, rendered in Accent Sage with a lock icon; the guesser sees an inline label ("Only other correct guessers see what you type now") so the mode-switch is never silent. The split is enforced by RLS, not client-side filtering — a player who hasn't guessed correctly never receives those rows at all. Reasoning: the original "highlighted row with the answer inline" design would hand the answer to every player still guessing the instant anyone got it right.
+- The sender's own message appears the instant Send is pressed, not after the server round-trip — an optimistic local echo (`guess-input.tsx`) reconciled against the real row once Realtime delivers it (`ARCHITECTURE.md` §5).
 - The player's own guess box turns Accent Sage the moment their guess is confirmed correct, alongside a short "ding" (§4).
 - **Leaderboard**: names + avatars + scores, sorted by rank, animates reordering (Framer Motion `layout`) as scores change mid-round.
 - Round ends on timer expiry, or (if the host enabled it) once every connected, non-spectating player has guessed correctly.
@@ -46,7 +47,7 @@ Layout: single column, emoji sequence in a centered focal card, chat/guess box b
 ### 2.5 Per-round recap
 Brief transition overlay between rounds (~5 seconds — `RECAP_SECONDS` in `_shared/settings.ts`, shared by the server's advance timing and the client's due-time calculation so they can't drift apart — not skippable by players, though the host could have a "skip recap" affordance later):
 - Reveals the correct answer.
-- Shows who guessed it first (name + avatar) and the point spread awarded that round — or "Nobody guessed it this round" if nobody did.
+- Shows the round's top 3 scorers (avatar, name, points) — or "Nobody guessed it this round" if nobody did.
 - Then auto-advances to the next round.
 
 ### 2.6 Shareable join
@@ -64,11 +65,11 @@ More than a final scoreboard, eventually:
 - Final leaderboard (winner emphasized, avatar + score; a tie at the top shows no single winner rather than crowning one arbitrarily).
 - Fastest average guess time.
 - Most correct guesses.
-- An "MVP" callout (host's choice of metric, e.g. best combination of speed + accuracy).
+- An "MVP" callout — most rounds won (highest score in that round), not most total points, since total points is already the leaderboard winner and would be a redundant callout for the same player.
 - Per-round breakdown (what was asked, who got it, how fast).
-- Host-only controls: **change category / edit custom words**, then **restart** — this keeps the same room/lobby alive so players don't have to re-join or re-pick avatars for another game. A plain "end room" option also exists.
+- Host-only controls: **change category / edit custom words**, then **restart** — this keeps the same room/lobby alive so players don't have to re-join or re-pick avatars for another game. The custom-words field replaces the previous game's list wholesale rather than pre-filling it (the client has no read access to `words`, by design — CLAUDE.md rule 1 — so there's nothing to prefill from); leaving it blank falls back to category words only. A plain "end room" option also exists.
 
-**Phase 4 status:** the final leaderboard is live (winner emphasized, correct tie handling); the confetti moment, the four richer stats, and the host restart/end-room controls are not yet built — the results screen is a terminal state for the room today.
+**Status:** the final leaderboard, confetti for an outright winner, and the four richer stats (fastest average guess time, most correct guesses, MVP, per-round breakdown) are all live, as is the host restart flow (`restart-room`, `ARCHITECTURE.md` §9/§14) — the results screen is no longer a terminal state. The "end room" option is still not built.
 
 ### 2.9 Reconnect / disconnect (cross-cutting, not a separate screen)
 - A refreshed or reconnecting tab silently rejoins the same seat (persisted room code + Supabase anonymous session in `localStorage`) rather than creating a duplicate player entry. No re-entering name/avatar. Exception: a kicked player's rejoin is refused — they see a clear "you were removed from this room" state instead of silently resuming their old seat (see `ARCHITECTURE.md` §10).
@@ -119,13 +120,13 @@ At most one accent per component. No gradients. Shadows are soft/low-opacity/blu
 **Theme:** light/dark is a nice-to-have (Tailwind + shadcn make it cheap if the token structure above is respected from the start) — doesn't block core phases.
 
 ## 4. Sound design
-Short, mutable sound effects: a correct-guess "ding" (live, Phase 4 — `src/lib/sounds.ts`, fires on the direct HTTP response from `submit-guess`, not a realtime round-trip, so the feedback is immediate), a low-time tick during the last few seconds of a round (not yet built — `public/sounds/` only has `ding.mp3` today). No mute toggle yet either. Cheap to add, disproportionately fun for a party game genre — don't over-scope beyond these two.
+Short, mutable sound effects, both live (`src/lib/sounds.ts`): a correct-guess "ding" (fires on the direct HTTP response from `submit-guess`, not a realtime round-trip, so the feedback is immediate), and a low-time tick during the last `URGENT_SECONDS` (10) of a round — synthesized via the Web Audio API rather than a shipped asset, so there's no second binary in `public/sounds/` and no possible 404 path. A mute toggle (`SoundToggle`, shown in the room header) persists the preference in `localStorage["gtm:muted"]` and gates both sounds.
 
 ## 5. Moderation & content rules
 - Profanity filter applies to: chat messages (live, Phase 4, via `submit-guess`), room names, custom word submissions (both the emoji-sequence label and the answer text), **and player display names** — since hosts can submit arbitrary free text for custom words, and any player can set an arbitrary display name that's then visible to the whole room for the entire game (same exposure as a room name), this is a hard requirement, not a polish item. Implemented via `obscenity` in `supabase/functions/_shared/profanity.ts`. **Scope, revised in Phase 4:** the filter blocks one slur (the n-word and obfuscations of it), not general profanity — ordinary swearing is allowed. `obscenity` is kept for its obfuscation/leetspeak transformer pipeline; only the word list was narrowed.
 - Host can kick or mute a player from the room, both accessible from the in-round or lobby player list (small, deliberate affordance — not prominent enough to invite misuse). A muted player sees a visible muted indicator on their own input (icon + label, not color-only, per the accessibility guardrail) — mute stops chat, not guessing. A kicked player is removed immediately and cannot silently rejoin by refreshing (`ARCHITECTURE.md` §10).
 
 ## 6. Open product questions
-- MVP metric definition for the end-of-game screen (single metric vs weighted composite) — still open; the stat itself isn't built yet (§2.8).
-- ~~Exact scoring formula defaults~~ — settled and shipped, `ARCHITECTURE.md` §7: `max(20, 100 - 5*seconds_elapsed)` plus a flat +25 first-guess bonus.
+- ~~MVP metric definition for the end-of-game screen~~ — settled and shipped: most rounds won, not a weighted composite (§2.8).
+- ~~Exact scoring formula defaults~~ — settled and shipped, `ARCHITECTURE.md` §7: `time (500 max, 5s leeway) + difficulty (100/200/300) + room-wide first-guess bonus (200 max)`, 1000-point ceiling, no guess-count factor (an earlier per-player-attempt-count factor was dropped since the guess box is also the chat box, and would have penalized ordinary banter; the current first-guess bonus is room-wide — the round's single fastest correct guess, not a per-player attempt tally — so it doesn't have that flaw).
 - ~~Whether "round ends early once everyone's guessed correctly" is on by default or a host toggle~~ — settled: on by default (`rooms.settings.end_round_on_all_correct`), not host-editable in the UI yet.

@@ -7,7 +7,7 @@
 
 export const SETTINGS_BOUNDS = {
   rounds: { min: 3, max: 30, default: 10 },
-  secondsPerRound: { min: 15, max: 120, default: 45 },
+  secondsPerRound: { min: 30, max: 90, default: 60 },
   maxPlayers: { min: 2, max: 16, default: 16 },
 } as const;
 
@@ -15,21 +15,11 @@ export const SETTINGS_BOUNDS = {
 // players start-game requires before the room can leave 'lobby'.
 export const MIN_PLAYERS_TO_START = 2;
 
-// How long the per-round recap (answer + who got it first) stays up before
+// How long the per-round recap (answer + top scorers) stays up before
 // round-tick advances. DESIGN.md §2.5: "a few seconds, not skippable by
 // players". Both round-tick and the client's due-time calculation read this,
 // so they can't drift apart.
 export const RECAP_SECONDS = 5;
-
-// Not host-editable in this phase's UI, but written now (ARCHITECTURE.md
-// §7) so a future start-round/submit-guess phase has a settled formula to
-// read rather than inventing one under time pressure.
-export const DEFAULT_SCORING = {
-  base_points: 100,
-  decay_per_second: 5,
-  min_points: 20,
-  first_guess_bonus: 25,
-} as const;
 
 export interface RawSettingsInput {
   rounds?: unknown;
@@ -41,7 +31,6 @@ export interface RoomSettings {
   seconds_per_round: number;
   max_players: number;
   end_round_on_all_correct: boolean;
-  scoring: typeof DEFAULT_SCORING;
 }
 
 function clampInt(
@@ -63,6 +52,5 @@ export function clampSettings(input: RawSettingsInput | undefined | null): RoomS
     seconds_per_round: clampInt(input?.secondsPerRound, SETTINGS_BOUNDS.secondsPerRound),
     max_players: SETTINGS_BOUNDS.maxPlayers.default,
     end_round_on_all_correct: true,
-    scoring: DEFAULT_SCORING,
   };
 }

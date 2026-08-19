@@ -13,6 +13,8 @@ import { StartGameButton } from "@/components/room/start-game-button";
 import { WaitingForHost } from "@/components/room/waiting-for-host";
 import { RoomGame } from "@/app/room/[code]/room-game";
 import { GameResults } from "@/components/game/game-results";
+import { RestartRoomForm } from "@/components/game/restart-room-form";
+import { SoundToggle } from "@/components/game/sound-toggle";
 
 interface RoomLobbyProps {
   code: string;
@@ -124,15 +126,29 @@ export function RoomLobby({ code }: RoomLobbyProps) {
       <div
         className={`doodle-card w-full space-y-6 p-6 sm:p-8 ${inGame ? "max-w-3xl" : "max-w-md"}`}
       >
-        <div className="text-center">
+        <div className="relative text-center">
           <p className="text-sm text-ink-muted">Room code</p>
           <p className="font-heading text-3xl font-semibold tracking-wider text-ink">{code}</p>
+          <span className="absolute top-0 right-0">
+            <SoundToggle />
+          </span>
         </div>
 
         {inGame ? (
           <RoomGame roomCode={code} myPlayerId={myPlayerId} isSpectator={me.isSpectator} />
         ) : room.status === "ended" ? (
-          <GameResults myPlayerId={myPlayerId} />
+          <>
+            <GameResults myPlayerId={myPlayerId} />
+            {isHost ? (
+              <RestartRoomForm roomCode={code} />
+            ) : (
+              <WaitingForHost
+                hostName={host?.displayName ?? null}
+                hostOffline={!!host && offlineIds.has(host.id)}
+                action="start a new game"
+              />
+            )}
+          </>
         ) : (
           <>
             <PlayerList players={players} myPlayerId={myPlayerId} offlineIds={offlineIds} />

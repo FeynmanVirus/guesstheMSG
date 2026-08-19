@@ -137,6 +137,15 @@ export function useRoomChannel(code: string, roomId: string | null, myPlayerId: 
             status: RoomStatus;
             settings: { rounds?: number } | null;
           };
+
+          // A restart-room (§9) reuses the room, so without this the
+          // previous game's final round — recap overlay included — stays
+          // on screen until round-tick creates the new game's round 1.
+          const prevStatus = useRoomStore.getState().room?.status;
+          if (prevStatus === "ended" && row.status === "in_progress") {
+            useRoomStore.getState().setRound(null);
+          }
+
           useRoomStore.getState().setRoom({
             id: row.id,
             status: row.status,
@@ -165,10 +174,15 @@ export function useRoomChannel(code: string, roomId: string | null, myPlayerId: 
             if (Math.abs(drift) > 1000) useRoomStore.getState().setServerOffset(drift);
           }
 
-          // Ignore a stale row arriving after a newer one (out-of-order
-          // delivery): only move forward, or update the round we're on.
+          // Ignore a stale row arriving after a newer one. Compared on
+          // started_at, not round_number: after a restart-room (§9), the
+          // new session's round 1 is legitimately "lower numbered" than the
+          // round still in the store from the previous game, and a
+          // round_number comparison would drop it forever. Equal timestamps
+          // (a reveal UPDATE on the round already held) fall through and
+          // apply, which is correct.
           const current = useRoomStore.getState().round;
-          if (current && current.roundNumber > next.roundNumber) return;
+          if (current && new Date(next.startedAt) < new Date(current.startedAt)) return;
           useRoomStore.getState().setRound(next);
         },
       )

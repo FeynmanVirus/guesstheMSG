@@ -24,6 +24,7 @@ interface RoomState {
   setRoom: (room: RoomInfo | null) => void;
   setRound: (round: RoundInfo | null) => void;
   addMessage: (message: ChatMessage) => void;
+  removeMessage: (id: string) => void;
   mergeMessages: (messages: ChatMessage[]) => void;
   setPresence: (presentIds: Set<string>, synced?: boolean) => void;
   setConnection: (connection: "connecting" | "live" | "error") => void;
@@ -46,6 +47,29 @@ function playersEqual(a: RoomPlayer, b: RoomPlayer): boolean {
 function sortMessages(messages: ChatMessage[]): ChatMessage[] {
   return [...messages].sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
+}
+
+/** Prefix for the client-side placeholder guess-input paints before the
+ * server round-trip resolves. Never collides with a Postgres uuid. */
+export const LOCAL_ECHO_PREFIX = "local-";
+
+/** Drop any local echo an arriving real row supersedes. The real row has a
+ * server uuid, so the match is on (playerId, body) — kind/visibility are
+ * excluded because the server may classify a message differently than the
+ * echo guessed, and both render identically anyway (message-stream.tsx).
+ *
+ * ponytail: naive (playerId, body) match — two identical messages in flight
+ * from the same player could reconcile out of order, but both are the same
+ * text, so nothing visible changes. Upgrade path if it ever matters: a
+ * correlation id echoed back by submit-guess. */
+function stripEchoes(messages: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
+  const real = incoming.filter((m) => !m.id.startsWith(LOCAL_ECHO_PREFIX));
+  if (real.length === 0) return messages;
+  return messages.filter(
+    (m) =>
+      !m.id.startsWith(LOCAL_ECHO_PREFIX) ||
+      !real.some((r) => r.playerId === m.playerId && r.body === m.body),
   );
 }
 
@@ -97,13 +121,22 @@ export const useRoomStore = create<RoomState>((set) => ({
   addMessage: (message) =>
     set((state) => {
       if (state.messages.some((m) => m.id === message.id)) return state;
-      const messages = sortMessages([...state.messages, message]);
+      const messages = sortMessages([...stripEchoes(state.messages, [message]), message]);
       return { messages: messages.slice(-MAX_MESSAGES) };
     }),
 
+  removeMessage: (id) =>
+    set((state) => {
+      const messages = state.messages.filter((m) => m.id !== id);
+      return messages.length === state.messages.length ? state : { messages };
+    }),
+
+  // The catch-up read (on connect/reconnect) needs the same reconciliation
+  // as addMessage — it can land while an echo from an in-flight send is
+  // still pending.
   mergeMessages: (incoming) =>
     set((state) => {
-      const byId = new Map(state.messages.map((m) => [m.id, m]));
+      const byId = new Map(stripEchoes(state.messages, incoming).map((m) => [m.id, m]));
       for (const message of incoming) byId.set(message.id, message);
       return { messages: sortMessages([...byId.values()]).slice(-MAX_MESSAGES) };
     }),

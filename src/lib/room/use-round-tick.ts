@@ -57,6 +57,14 @@ export function useRoundTick(roomCode: string, enabled: boolean) {
     // One timer, re-armed each pass, rather than a fixed interval: in steady
     // state mid-round it sleeps until the transition is actually due instead
     // of polling every second.
+    //
+    // The timer always fires by at most SAFETY_POLL_MS and always ticks when
+    // it fires — never gated on "is the due-time calc satisfied yet". A
+    // gate there would defeat the whole point of the safety poll: whether
+    // everyone has already guessed correctly is server-side state this
+    // client can't compute from its own cached `round`, so the only way to
+    // discover it is to actually ask, on every safety-poll tick, not just
+    // once dueInMs() independently reaches 0.
     let timer: ReturnType<typeof setTimeout>;
 
     function schedule() {
@@ -64,7 +72,7 @@ export function useRoundTick(roomCode: string, enabled: boolean) {
       const delay = Math.min(dueInMs(), SAFETY_POLL_MS);
       timer = setTimeout(async () => {
         if (cancelled) return;
-        if (dueInMs() === 0) await tick();
+        await tick();
         schedule();
       }, Math.max(250, delay));
     }

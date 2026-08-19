@@ -1,7 +1,3 @@
-"use client";
-
-import { motion } from "motion/react";
-
 interface EmojiCardProps {
   emojiSequence: string;
   roundNumber: number;
@@ -9,16 +5,12 @@ interface EmojiCardProps {
 }
 
 // The screen's one focal point (DESIGN.md §3): large, centered, nothing
-// competing with it. The card re-mounts per round via a `key` on the parent
-// so each new sequence gets its own entrance.
+// competing with it. Entrance/exit between rounds is owned by the parent
+// (room-game.tsx), which wraps this alongside RoundTimer in one motion.div
+// keyed by round.id — a plain div here avoids animating twice.
 export function EmojiCard({ emojiSequence, roundNumber, totalRounds }: EmojiCardProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ type: "spring", stiffness: 300, damping: 20 }}
-      className="doodle-card px-6 py-8 text-center"
-    >
+    <div className="doodle-card px-6 py-8 text-center">
       <p className="text-sm text-ink-muted">
         Round {roundNumber} of {totalRounds}
       </p>
@@ -32,6 +24,6 @@ export function EmojiCard({ emojiSequence, roundNumber, totalRounds }: EmojiCard
       >
         {emojiSequence}
       </p>
-    </motion.div>
+    </div>
   );
 }
