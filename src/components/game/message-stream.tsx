@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Check, Lock } from "lucide-react";
+import { Check, Clock, Lock } from "lucide-react";
 import { useRoomStore } from "@/lib/room/store";
 
 interface MessageStreamProps {
@@ -45,17 +45,32 @@ export function MessageStream({ myPlayerId }: MessageStreamProps) {
             }
 
             const winners = message.visibility === "correct";
+            // A pending row is a local echo whose verdict hasn't come back
+            // yet (guess-input.tsx) — not yet a committed message, since
+            // the client doesn't know if it's about to be replaced by a
+            // "guessed correctly" line. Dimmed + a clock, never opacity
+            // alone (DESIGN.md §3's color-isn't-enough guardrail, applied
+            // here to state-isn't-color-alone-either).
             return (
               <li
                 key={message.id}
+                aria-busy={message.pending}
                 className={`px-2 py-0.5 text-sm ${
-                  winners ? "rounded-lg bg-sage/15 text-ink" : "text-ink"
+                  message.pending
+                    ? "text-ink-muted opacity-60"
+                    : winners
+                      ? "rounded-lg bg-sage/15 text-ink"
+                      : "text-ink"
                 }`}
               >
-                {winners && (
-                  <Lock className="mr-1 inline size-3 shrink-0 align-[-1px]" aria-hidden />
+                {message.pending ? (
+                  <Clock className="mr-1 inline size-3 shrink-0 animate-pulse align-[-1px]" aria-hidden />
+                ) : (
+                  winners && (
+                    <Lock className="mr-1 inline size-3 shrink-0 align-[-1px]" aria-hidden />
+                  )
                 )}
-                <span className={winners ? "font-semibold" : "font-semibold text-ink-muted"}>
+                <span className={winners && !message.pending ? "font-semibold" : "font-semibold text-ink-muted"}>
                   {name}
                   {isSelf ? " (you)" : ""}:
                 </span>{" "}

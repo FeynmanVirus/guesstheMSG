@@ -39,7 +39,14 @@ export interface RoundInfo {
 
 /** One row of the combined chat/guess stream. `visibility: 'correct'` rows
  * are the winners' chat — RLS means a player who hasn't guessed correctly
- * never receives them at all, so this field is for styling, not filtering. */
+ * never receives them at all, so this field is for styling, not filtering.
+ *
+ * `pending` is a client-only flag, true only for a local echo whose verdict
+ * hasn't come back yet (guess-input.tsx) — never set on a row that arrived
+ * from the server. It exists so the echo can render as "still evaluating"
+ * instead of a fully-committed message that then vanishes if the guess
+ * turns out correct (store.ts's stripEchoes still removes/replaces it the
+ * same way either way; this only changes how it looks in the meantime). */
 export interface ChatMessage {
   id: string;
   playerId: string;
@@ -48,6 +55,7 @@ export interface ChatMessage {
   visibility: "all" | "correct";
   roundId: string | null;
   createdAt: string;
+  pending?: boolean;
 }
 
 export type LobbyPhase = "loading" | "redirecting" | "lobby" | "starting";

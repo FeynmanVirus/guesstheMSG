@@ -25,6 +25,7 @@ interface RoomState {
   setRound: (round: RoundInfo | null) => void;
   addMessage: (message: ChatMessage) => void;
   removeMessage: (id: string) => void;
+  settlePending: (id: string) => void;
   mergeMessages: (messages: ChatMessage[]) => void;
   setPresence: (presentIds: Set<string>, synced?: boolean) => void;
   setConnection: (connection: "connecting" | "live" | "error") => void;
@@ -59,18 +60,23 @@ export const LOCAL_ECHO_PREFIX = "local-";
  * excluded because the server may classify a message differently than the
  * echo guessed, and both render identically anyway (message-stream.tsx).
  *
- * ponytail: naive (playerId, body) match — two identical messages in flight
- * from the same player could reconcile out of order, but both are the same
- * text, so nothing visible changes. Upgrade path if it ever matters: a
- * correlation id echoed back by submit-guess. */
+ * One-to-one: each real row retires at most one echo, not every echo that
+ * matches it. Sends are no longer serialized (guess-input.tsx allows a
+ * second Enter while the first is still in flight), so sending the same
+ * text twice in a row is a real case now — a many-to-one match would have
+ * both echoes vanish on the first real row's arrival, leaving the second
+ * message invisible until its own row lands. */
 function stripEchoes(messages: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
   const real = incoming.filter((m) => !m.id.startsWith(LOCAL_ECHO_PREFIX));
   if (real.length === 0) return messages;
-  return messages.filter(
-    (m) =>
-      !m.id.startsWith(LOCAL_ECHO_PREFIX) ||
-      !real.some((r) => r.playerId === m.playerId && r.body === m.body),
-  );
+  const unclaimed = real.slice();
+  return messages.filter((m) => {
+    if (!m.id.startsWith(LOCAL_ECHO_PREFIX)) return true;
+    const i = unclaimed.findIndex((r) => r.playerId === m.playerId && r.body === m.body);
+    if (i === -1) return true;
+    unclaimed.splice(i, 1);
+    return false;
+  });
 }
 
 const initial = {
@@ -129,6 +135,24 @@ export const useRoomStore = create<RoomState>((set) => ({
     set((state) => {
       const messages = state.messages.filter((m) => m.id !== id);
       return messages.length === state.messages.length ? state : { messages };
+    }),
+
+  // Fallback for an echo that will never reconcile — a muted player's
+  // message (submit-guess accepts and silently drops it, ARCHITECTURE.md
+  // §10's shadow mute) has no real row coming. guess-input.tsx clears
+  // `pending` on a timer after the normal round trip would long since have
+  // resolved it, so a muted player's echo settles into looking exactly
+  // like an ordinary sent message — the same "sticks forever" behavior the
+  // shadow mute already relied on — rather than showing a pending spinner
+  // forever, which would itself be a tell. A no-op if the id already
+  // reconciled or was retracted.
+  settlePending: (id) =>
+    set((state) => {
+      const i = state.messages.findIndex((m) => m.id === id);
+      if (i === -1 || !state.messages[i].pending) return state;
+      const messages = state.messages.slice();
+      messages[i] = { ...messages[i], pending: false };
+      return { messages };
     }),
 
   // The catch-up read (on connect/reconnect) needs the same reconciliation

@@ -28,6 +28,13 @@ interface GuessResult {
   dropped?: boolean;
 }
 
+// Round trip a normal-looking message would otherwise sit at before a muted
+// echo (which never reconciles — see below) gives up and settles. Well
+// above the RPC's real latency (a few hundred ms after the
+// 20260819150000_submit_guess_rpcs.sql fix) so it never fires before a
+// genuine reconciliation would have.
+const PENDING_TIMEOUT_MS = 4000;
+
 // One input serves chat and guesses both (DESIGN.md §2.4). The client has no
 // idea whether what you typed was right — submit-guess answers that, and its
 // direct HTTP response (not the realtime round-trip) is what drives the
@@ -37,9 +44,14 @@ interface GuessResult {
 // optimistic path: it's added to the store the instant Send is pressed,
 // before the network round-trip even starts, rather than waiting for the
 // real chat_messages row to come back over Realtime (WAL -> per-subscriber
-// RLS -> WebSocket — a leg no amount of backend speed makes instant). The
-// store reconciles the placeholder against the real row once it lands
-// (store.ts's stripEchoes, matched on playerId+body).
+// RLS -> WebSocket — a leg no amount of backend speed makes instant). It
+// paints as `pending` (message-stream.tsx dims it + shows a clock) rather
+// than a fully-committed message: the client can't know yet whether this is
+// a normal chat line or about to be retracted for a correct guess, and
+// painting it as already-settled is what used to make a correct guess read
+// as "it randomly turns green" a second or two later. The store reconciles
+// the placeholder against the real row once it lands (store.ts's
+// stripEchoes, matched on playerId+body).
 //
 // The parent keys this component by round.id, so a new round remounts it
 // and "solved" naturally starts back at false — no reset effect needed.
@@ -49,10 +61,12 @@ interface GuessResult {
 // the shadow-mute design, ARCHITECTURE.md §10), so no real row ever arrives
 // to replace the placeholder. That's intentional, not a bug — a muted
 // player seeing their own message "stick" is what keeps them from being
-// able to probe whether they're muted.
+// able to probe whether they're muted. PENDING_TIMEOUT_MS is what keeps that
+// stuck message from *looking* different too — it settles out of the
+// pending state on a timer so it reads as an ordinary sent message instead
+// of a spinner that never resolves (which would itself be a tell).
 export function GuessInput({ roomCode, disabled, isSpectator, myPlayerId }: GuessInputProps) {
   const [text, setText] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [solved, setSolved] = useState(false);
   const [flash, setFlash] = useState(false);
@@ -60,10 +74,13 @@ export function GuessInput({ roomCode, disabled, isSpectator, myPlayerId }: Gues
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const value = text.trim();
-    if (!value || submitting) return;
+    // No `submitting` guard — sending the next message while a previous one
+    // is still in flight is the whole point (each send gets its own echoId
+    // below, so nothing collides). Only an empty box blocks a send.
+    if (!value) return;
 
     const echoId = `${LOCAL_ECHO_PREFIX}${crypto.randomUUID()}`;
-    const { addMessage, removeMessage, serverOffsetMs } = useRoomStore.getState();
+    const { addMessage, removeMessage, settlePending, serverOffsetMs } = useRoomStore.getState();
     if (myPlayerId) {
       addMessage({
         id: echoId,
@@ -79,11 +96,12 @@ export function GuessInput({ roomCode, disabled, isSpectator, myPlayerId }: Gues
         // rows that already carry a server timestamp (same offset the
         // round timer uses).
         createdAt: new Date(Date.now() + serverOffsetMs).toISOString(),
+        pending: true,
       });
+      window.setTimeout(() => settlePending(echoId), PENDING_TIMEOUT_MS);
     }
 
     setText("");
-    setSubmitting(true);
     setError(null);
     try {
       const result = await callFunction<GuessResult>("submit-guess", { roomCode, text: value });
@@ -108,8 +126,6 @@ export function GuessInput({ roomCode, disabled, isSpectator, myPlayerId }: Gues
       removeMessage(echoId);
       setText(value);
       setError("Couldn't send that. Check your connection.");
-    } finally {
-      setSubmitting(false);
     }
   }
 
@@ -127,10 +143,9 @@ export function GuessInput({ roomCode, disabled, isSpectator, myPlayerId }: Gues
           onChange={(e) => setText(e.target.value)}
           placeholder={placeholder}
           maxLength={200}
-          // Not gated on `submitting` — typing (and sending) the next
+          // Never gated on send-in-flight — typing (and sending) the next
           // message while the previous one is still in flight is the whole
-          // point of the optimistic echo. The guard in handleSubmit still
-          // blocks a double-submit of the same click.
+          // point of the optimistic echo, and each send has its own echoId.
           disabled={disabled}
           aria-label={solved ? "Message the winners' chat" : "Your guess or message"}
           className={`h-11 rounded-full border-2 px-4 transition-colors ${
@@ -143,7 +158,7 @@ export function GuessInput({ roomCode, disabled, isSpectator, myPlayerId }: Gues
         />
         <Button
           type="submit"
-          disabled={disabled || submitting || text.trim().length === 0}
+          disabled={disabled || text.trim().length === 0}
           aria-label="Send"
           className="doodle-btn bg-sun px-4 text-ink hover:bg-sun/90"
         >

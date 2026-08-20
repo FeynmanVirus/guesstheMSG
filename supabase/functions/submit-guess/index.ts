@@ -70,42 +70,32 @@ Deno.serve(async (req) => {
 
   const admin = createAdminClient();
 
-  const [{ data: { user } }, { data: room }] = await Promise.all([
-    userPromise,
-    admin.from("rooms").select("id, status").eq("code", code).maybeSingle(),
-  ]);
+  const {
+    data: { user },
+  } = await userPromise;
   if (!user) {
     return jsonErr("UNAUTHENTICATED", "Sign in required.", CORS_HEADERS);
   }
+
+  // Room -> player -> round -> word/mine used to be 4 sequential-ish trips
+  // (rooms select; players+rounds in parallel; words+guesses in parallel) —
+  // measured as the dominant cost of a 1.8s p50 round trip. One RPC,
+  // one query: see 20260819150000_submit_guess_rpcs.sql for how the
+  // dependency cascade (no room -> no player -> no round -> no word/mine)
+  // is expressed as joins instead of sequential awaits.
+  const { data: ctx } = await admin.rpc("guess_context", {
+    p_code: code,
+    p_auth_user_id: user.id,
+  });
+  const room = ctx?.room ?? null;
+  const me = ctx?.player ?? null;
+  const round = ctx?.round ?? null;
+  const word = ctx?.word ?? null;
+  const mine = ctx?.mine ?? null;
+
   if (!room) {
     return jsonErr("ROOM_NOT_FOUND", "No room found with that code.", CORS_HEADERS);
   }
-
-  // Both only need room.id, not each other. The round lookup skips the old
-  // game_sessions hop entirely: rounds carries room_id directly, and
-  // rounds_one_live_per_session plus round-tick's reveal-before-end
-  // invariant (a session's last round is always revealed before the
-  // session ends) guarantee a room has at most one unrevealed round across
-  // all its sessions at any time — so this is the same row the old
-  // session->round chain would have found, one hop cheaper. order+limit is
-  // defensive: if that invariant were ever violated, this degrades to
-  // "newest wins" instead of erroring every guess in the room.
-  const [{ data: me }, { data: roundRows }] = await Promise.all([
-    admin
-      .from("players")
-      .select("id, display_name, status, is_muted, is_spectator")
-      .eq("room_id", room.id)
-      .eq("auth_user_id", user.id)
-      .maybeSingle(),
-    admin
-      .from("rounds")
-      .select("id, word_id, started_at, ends_at")
-      .eq("room_id", room.id)
-      .is("revealed_at", null)
-      .order("started_at", { ascending: false })
-      .limit(1),
-  ]);
-  const round = roundRows?.[0] ?? null;
   if (!me) {
     return jsonErr("NOT_A_MEMBER", "You haven't joined this room.", CORS_HEADERS);
   }
@@ -151,20 +141,8 @@ Deno.serve(async (req) => {
     return jsonOk({ kind: "chat", winnersChat: false }, CORS_HEADERS);
   }
 
-  // The answer is read with the service role and never leaves this function.
-  // difficulty rides along for the scoring formula (guess.ts). Independent
-  // of the "already correct" check below — both only need round.id/me.id,
-  // neither needs the other's result.
-  const [{ data: word }, { data: mine }] = await Promise.all([
-    admin.from("words").select("answer, difficulty").eq("id", round!.word_id).maybeSingle(),
-    admin
-      .from("guesses")
-      .select("id, points_awarded")
-      .eq("round_id", round!.id)
-      .eq("player_id", me.id)
-      .eq("is_correct", true)
-      .maybeSingle(),
-  ]);
+  // word and mine already came back from guess_context above — the answer
+  // is read with the service role there and never leaves this function.
   const answer = normalizeGuess(word?.answer ?? "");
   const attempt = normalizeGuess(text);
 
@@ -205,16 +183,23 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Independent writes — neither needs the other's result.
-    await Promise.all([
-      admin.from("guesses").insert({
-        round_id: round!.id,
-        player_id: me.id,
-        guess_text: text,
-        is_correct: false,
-      }),
-      postChat("guess", "all", round!.id, text),
-    ]);
+    // Both writes for a wrong guess (the guesses row + the republished chat
+    // line) go through record_guess in one round trip instead of two
+    // parallel ones — see 20260819150000_submit_guess_rpcs.sql.
+    // p_submitted_at/p_base_score are meaningless on this branch (only
+    // p_is_correct: true reads them); a fresh timestamp and 0 are passed
+    // just to satisfy the signature.
+    await admin.rpc("record_guess", {
+      p_round_id: round!.id,
+      p_room_id: room.id,
+      p_player_id: me.id,
+      p_display_name: me.display_name,
+      p_guess_text: text,
+      p_is_correct: false,
+      p_submitted_at: new Date().toISOString(),
+      p_base_score: 0,
+      p_first_guess_bonus: FIRST_GUESS_BONUS,
+    });
     return jsonOk({ kind: "guess", correct: false }, CORS_HEADERS);
   }
 
@@ -240,71 +225,32 @@ Deno.serve(async (req) => {
     isFirstCorrect: false,
   });
 
-  const { data: inserted, error: insertError } = await admin
-    .from("guesses")
-    .insert({
-      round_id: round!.id,
-      player_id: me.id,
-      guess_text: text,
-      is_correct: true,
-      submitted_at: new Date(now).toISOString(),
-      points_awarded: baseScore,
-    })
-    .select("id")
-    .single();
+  // Insert -> atomic first-correct claim -> final points -> score increment
+  // -> system chat line used to be 4 sequential round trips; record_guess
+  // does all of it in one transaction, one trip. The ON CONFLICT branch
+  // inside it replaces the old insert-then-catch-23505-then-reselect dance:
+  // a caller who loses the race (two near-simultaneous requests from the
+  // same player, ARCHITECTURE.md §14) gets the winning row's own points
+  // back as alreadyCorrect, awarding nothing further — same outcome as
+  // before, one round trip instead of two.
+  const { data: result, error: rpcError } = await admin.rpc("record_guess", {
+    p_round_id: round!.id,
+    p_room_id: room.id,
+    p_player_id: me.id,
+    p_display_name: me.display_name,
+    p_guess_text: text,
+    p_is_correct: true,
+    p_submitted_at: new Date(now).toISOString(),
+    p_base_score: baseScore,
+    p_first_guess_bonus: FIRST_GUESS_BONUS,
+  });
 
-  if (insertError) {
-    // guesses_one_correct_per_player_round fired: two near-simultaneous
-    // requests from the same player both evaluated "not yet correct". This
-    // is an expected outcome, not a fault (ARCHITECTURE.md §14) — return the
-    // existing result and award nothing further.
-    if (insertError.code === "23505") {
-      const { data: existing } = await admin
-        .from("guesses")
-        .select("points_awarded")
-        .eq("round_id", round!.id)
-        .eq("player_id", me.id)
-        .eq("is_correct", true)
-        .maybeSingle();
-      return jsonOk(
-        { kind: "guess", correct: true, points: existing?.points_awarded ?? 0, alreadyCorrect: true },
-        CORS_HEADERS,
-      );
-    }
+  if (rpcError || !result) {
     return jsonErr("INTERNAL_ERROR", "Could not record that guess.", CORS_HEADERS);
   }
 
-  // Atomically claim "first correct guess in the room this round" — a
-  // single guarded UPDATE, not "read the earliest guesses row and check if
-  // it's mine": that read-then-compare has a real race between two
-  // DIFFERENT players' concurrent correct guesses (guess.ts's comment on
-  // this), where each could see "nobody yet" and both claim the bonus. This
-  // UPDATE can only ever match a row for one caller, full stop.
-  const { data: claimed } = await admin
-    .from("rounds")
-    .update({ first_correct_player_id: me.id })
-    .eq("id", round!.id)
-    .is("first_correct_player_id", null)
-    .select("id");
-  const isFirstCorrect = !!claimed && claimed.length > 0;
-
-  const points = isFirstCorrect ? baseScore + FIRST_GUESS_BONUS : baseScore;
-  if (isFirstCorrect) {
-    await admin.from("guesses").update({ points_awarded: points }).eq("id", inserted.id);
-  }
-
-  // Independent writes, both needing only the now-final `points`:
-  // the atomic score increment (players.score is service-role-only, rule 4)
-  // and the system chat line — name and points only, never the answer, which
-  // is what stops the first correct guess from handing the word to everyone
-  // still playing.
-  await Promise.all([
-    admin.rpc("add_player_score", { p_player_id: me.id, p_points: points }),
-    postChat("system", "all", round!.id, `${me.display_name} guessed correctly +${points}`),
-  ]);
-
   return jsonOk(
-    { kind: "guess", correct: true, points, alreadyCorrect: false },
+    { kind: "guess", correct: true, points: result.points, alreadyCorrect: result.alreadyCorrect },
     CORS_HEADERS,
   );
 });
