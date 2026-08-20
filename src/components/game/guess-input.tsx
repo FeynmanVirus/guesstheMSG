@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { Check, Lock, Send } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { callFunction } from "@/lib/api";
 import { playDing } from "@/lib/sounds";
 import { useRoomStore, LOCAL_ECHO_PREFIX } from "@/lib/room/store";
@@ -133,12 +131,12 @@ export function GuessInput({ roomCode, disabled, isSpectator, myPlayerId }: Gues
     ? "Spectating — chat only"
     : solved
       ? "You're in the winners' chat"
-      : "Type your guess…";
+      : "type your guess…";
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-2">
+    <form onSubmit={handleSubmit} className="border-t-2 border-dashed border-hairline p-3">
       <div className="flex items-center gap-2">
-        <Input
+        <input
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={placeholder}
@@ -148,28 +146,24 @@ export function GuessInput({ roomCode, disabled, isSpectator, myPlayerId }: Gues
           // point of the optimistic echo, and each send has its own echoId.
           disabled={disabled}
           aria-label={solved ? "Message the winners' chat" : "Your guess or message"}
-          className={`h-11 rounded-full border-2 px-4 transition-colors ${
-            flash
-              ? "border-sage bg-sage/40"
-              : solved
-                ? "border-sage bg-sage/15"
-                : "border-ink"
+          className={`h-11 min-w-0 flex-1 rounded-full border-[2.5px] px-4 font-bold text-ink outline-none transition-colors placeholder:font-semibold placeholder:text-placeholder disabled:opacity-60 ${
+            flash ? "border-sage bg-sage/40" : solved ? "border-sage bg-sage/15" : "border-ink bg-surface"
           }`}
         />
-        <Button
+        <button
           type="submit"
           disabled={disabled || text.trim().length === 0}
           aria-label="Send"
-          className="doodle-btn bg-sun px-4 text-ink hover:bg-sun/90"
+          className="doodle-btn flex size-9 shrink-0 items-center justify-center bg-lavender text-ink disabled:opacity-50"
         >
           <Send className="size-4" aria-hidden />
-        </Button>
+        </button>
       </div>
 
       {/* Icon + text, never colour alone (DESIGN.md §3). */}
       {solved && (
-        <p className="flex items-center gap-1.5 text-sm font-semibold text-ink">
-          <Check className="size-4 text-sage" aria-hidden />
+        <p className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-ink">
+          <Check className="size-3.5 text-sage-ink" aria-hidden />
           Correct!
           <span className="inline-flex items-center gap-1 font-normal text-ink-muted">
             <Lock className="size-3" aria-hidden />
@@ -178,7 +172,7 @@ export function GuessInput({ roomCode, disabled, isSpectator, myPlayerId }: Gues
         </p>
       )}
 
-      {error && <p className="text-sm text-coral">{error}</p>}
+      {error && <p className="mt-1.5 text-xs text-coral">{error}</p>}
     </form>
   );
 }

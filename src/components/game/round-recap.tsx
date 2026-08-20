@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "motion/react";
-import { Avatar } from "@/components/doodle/avatar";
+import { Podium, type PodiumEntry } from "@/components/doodle/podium";
+import { Squiggle } from "@/components/doodle/squiggle";
 import { supabase } from "@/lib/supabase/client";
 import { useRoomStore } from "@/lib/room/store";
 import type { RoundInfo } from "@/lib/room/types";
@@ -16,18 +16,14 @@ interface TopScorer {
   points: number;
 }
 
-const RANK_MEDAL = ["🥇", "🥈", "🥉"];
-
-// The brief, non-skippable transition between rounds (DESIGN.md §2.5):
-// reveal the answer and the round's top 3 scorers. round-tick advances the
-// round on its own timer — this overlay is purely a read of what round-tick
-// already wrote, and it auto-dismisses the instant a new round row replaces
-// this one (the parent stops rendering it).
-//
-// The outer <AnimatePresence> that used to live here has moved up to the
-// parent (room-game.tsx), which now owns the fade in/out for this whole
-// overlay alongside the round-to-round transition — a component can't
-// animate its own unmount by wrapping itself.
+// The centre column's alternate state once a round ends (mockup frame 1f):
+// reveals the answer and the round's top 3 scorers. Unlike the old fixed
+// overlay this used to be, the leaderboard and chat panel keep running
+// behind it — the parent (room-game.tsx) swaps just this one column and
+// owns the swap animation, so this component renders as plain content.
+// round-tick advances the round on its own timer; this is purely a read of
+// what it already wrote, and it auto-dismisses the instant a new round row
+// replaces this one (the parent stops rendering it).
 export function RoundRecap({ round }: RoundRecapProps) {
   const players = useRoomStore((s) => s.players);
   // The parent keys this component by round.id, so a new round remounts it
@@ -49,8 +45,8 @@ export function RoundRecap({ round }: RoundRecapProps) {
         if (cancelled) return;
         // A real query error (RLS/network) must not render as "nobody
         // guessed" — that's a false claim, not a fallback. Leaving `top` at
-        // `undefined` here just keeps the list blank rather than asserting
-        // an outcome the query couldn't confirm.
+        // `undefined` here just keeps the podium blank rather than
+        // asserting an outcome the query couldn't confirm.
         if (error) {
           console.error("round-recap: failed to load top scorers", error);
           return;
@@ -63,59 +59,34 @@ export function RoundRecap({ round }: RoundRecapProps) {
     };
   }, [round.id]);
 
+  const entries: PodiumEntry[] = (top ?? []).flatMap((row) => {
+    const p = players.get(row.playerId);
+    return p
+      ? [{ playerId: p.id, avatarId: p.avatarId, displayName: p.displayName, points: row.points }]
+      : [];
+  });
+
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-6"
-      role="dialog"
-      aria-label="Round recap"
-    >
-      <motion.div
-        initial={{ opacity: 0, y: 12, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ type: "spring", stiffness: 300, damping: 20 }}
-        className="doodle-card w-full max-w-sm space-y-4 p-6 text-center"
-      >
-        <p className="text-sm text-ink-muted">The answer was</p>
-        <p className="font-heading text-3xl font-semibold text-ink capitalize">
-          {round.revealedAnswer ?? "…"}
-        </p>
+    <div className="doodle-panel flex min-h-[420px] flex-col items-center gap-2.5 p-5 text-center lg:min-h-[560px]">
+      <p className="text-xs font-bold tracking-[0.16em] text-ink-muted uppercase">
+        round {round.roundNumber} solved
+      </p>
+      <Squiggle color="lavender" width={160} />
+      <p className="mt-1 font-heading text-3xl font-bold text-ink capitalize">
+        {round.revealedAnswer ?? "…"}
+      </p>
 
-        {top === undefined ? null : top.length > 0 ? (
-          <div className="space-y-2 text-left">
-            <p className="text-center text-sm text-ink-muted">Top scorers</p>
-            <ul className="space-y-2">
-              {top.map((row, i) => {
-                const p = players.get(row.playerId);
-                if (!p) return null;
-                return (
-                  <li
-                    key={row.playerId}
-                    className={`flex items-center gap-3 rounded-xl border-2 px-3 py-2 ${
-                      i === 0 ? "border-sun bg-sun/10" : "border-ink/15 bg-surface"
-                    }`}
-                  >
-                    <span className="w-5 text-center text-sm" aria-hidden>
-                      {RANK_MEDAL[i]}
-                    </span>
-                    <Avatar avatarId={p.avatarId} className="size-8 text-base" />
-                    <p className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
-                      {p.displayName}
-                    </p>
-                    <p className="font-heading text-lg font-semibold text-sun">+{row.points}</p>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+      <div className="flex w-full flex-1 items-end px-4">
+        {top === undefined ? null : entries.length > 0 ? (
+          <Podium entries={entries} />
         ) : (
-          <p className="text-sm text-ink-muted">Nobody guessed it this round.</p>
+          <p className="m-auto text-sm text-ink-muted">Nobody guessed it this round.</p>
         )}
+      </div>
 
-        <p className="text-xs text-ink-muted">Next round starting…</p>
-      </motion.div>
-    </motion.div>
+      <p className="w-full border-t-2 border-dashed border-hairline pt-3.5 text-sm font-semibold text-ink-muted">
+        next round starting…
+      </p>
+    </div>
   );
 }

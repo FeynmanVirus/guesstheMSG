@@ -121,12 +121,19 @@ export function RoomLobby({ code }: RoomLobbyProps) {
     ? players.filter((p) => presentIds.has(p.id)).length
     : players.length;
 
-  const inGame = room.status === "in_progress";
+  if (room.status === "in_progress") {
+    // RoomGame owns its own wide shell end to end (header, timer, sound
+    // toggle included) — nothing to wrap it in here.
+    return (
+      <div className="flex flex-1 flex-col items-center px-4 py-6 sm:px-6 sm:py-8">
+        <RoomGame roomCode={code} myPlayerId={myPlayerId} isSpectator={me.isSpectator} />
+      </div>
+    );
+  }
 
-  if (inGame || room.status === "ended") {
-    // In-game and results get their own page-level shell — see room-game.tsx
-    // (Phase 4) and game-results.tsx (Phase 5). This one keeps the older
-    // centered-card treatment until those land.
+  if (room.status === "ended") {
+    // Results gets its own page-level shell in Phase 5 — this keeps the
+    // older centered-card treatment until then.
     return (
       <div className="flex flex-1 flex-col items-center px-6 py-10">
         <div className="doodle-card w-full max-w-3xl space-y-6 p-6 sm:p-8">
@@ -138,21 +145,15 @@ export function RoomLobby({ code }: RoomLobbyProps) {
             </span>
           </div>
 
-          {inGame ? (
-            <RoomGame roomCode={code} myPlayerId={myPlayerId} isSpectator={me.isSpectator} />
+          <GameResults myPlayerId={myPlayerId} />
+          {isHost ? (
+            <RestartRoomForm roomCode={code} />
           ) : (
-            <>
-              <GameResults myPlayerId={myPlayerId} />
-              {isHost ? (
-                <RestartRoomForm roomCode={code} />
-              ) : (
-                <WaitingForHost
-                  hostName={host?.displayName ?? null}
-                  hostOffline={!!host && offlineIds.has(host.id)}
-                  action="start a new game"
-                />
-              )}
-            </>
+            <WaitingForHost
+              hostName={host?.displayName ?? null}
+              hostOffline={!!host && offlineIds.has(host.id)}
+              action="start a new game"
+            />
           )}
         </div>
       </div>

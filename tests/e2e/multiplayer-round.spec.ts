@@ -32,14 +32,19 @@ async function createRoom(session: PlayerSession, rounds: number): Promise<strin
   const { page } = session;
   await page.getByRole("button", { name: "Create Room", exact: true }).click();
   await page.getByLabel("Room name").fill("Playwright multiplayer test room");
-  await page.getByLabel("Rounds").fill(String(rounds));
-  // The category Select populates from an async fetch (create-room-form.tsx)
-  // and shows a "Loading…" placeholder until it resolves and defaults to the
-  // first category — submitting before that lands sends an empty
-  // categoryId, which the server correctly rejects with "Category is
-  // required." This is a real async gap to wait out, not a fixed delay.
-  await expect(page.locator("#room-category")).not.toContainText("Loading", { timeout: 15_000 });
-  await page.getByRole("button", { name: "Create room" }).click();
+
+  // Rounds is a stepper (doodle/stepper.tsx), not a fillable input — click
+  // "Decrease rounds" down from SETTINGS_BOUNDS.rounds.default (10) to the
+  // requested count.
+  const decrease = page.getByRole("button", { name: "Decrease rounds" });
+  for (let i = SETTINGS_ROUNDS_DEFAULT; i > rounds; i--) await decrease.click();
+
+  // "Mixed" is always present (no async category fetch to wait on) and
+  // works for this test's purposes — it just needs a valid, non-empty
+  // categoryId so the server doesn't reject with "Category is required."
+  await page.getByRole("radio", { name: "🎲 Mixed" }).click();
+
+  await page.getByRole("button", { name: "Make the room" }).click();
 
   await page.waitForURL(/\/room\/[A-Z0-9]{3}-\d{3}/, { timeout: 15_000 });
   const match = page.url().match(/\/room\/([A-Z0-9]{3}-\d{3})/);
@@ -47,11 +52,21 @@ async function createRoom(session: PlayerSession, rounds: number): Promise<strin
   return match[1];
 }
 
+// Matches SETTINGS_BOUNDS.rounds.default in supabase/functions/_shared/settings.ts
+// (not imported directly — that module isn't resolvable from Playwright's config).
+const SETTINGS_ROUNDS_DEFAULT = 10;
+
 async function joinRoom(session: PlayerSession, code: string) {
   const { page } = session;
   await page.getByRole("button", { name: "Join Room", exact: true }).click();
-  await page.getByLabel("Room code").fill(code);
-  await page.getByRole("button", { name: "Join room" }).click();
+
+  // Room code is a 6-box input (room-code-input.tsx), not a fillable
+  // single field — click the first box and type the 6 characters; the
+  // component auto-advances focus box to box as each one fills.
+  await page.getByLabel("Room code character 1").click();
+  await page.keyboard.type(code.replace(/[^A-Z0-9]/g, ""));
+
+  await page.getByRole("button", { name: "Knock knock" }).click();
   await page.waitForURL(new RegExp(`/room/${code}`), { timeout: 15_000 });
 }
 
@@ -78,7 +93,7 @@ async function readLiveLeaderboard(page: Page): Promise<Record<string, number>> 
   for (let i = 0; i < count; i++) {
     const row = rows.nth(i);
     const rawName = (await row.locator("p").first().textContent()) ?? "";
-    const name = rawName.replace(/\s*\(you\)\s*$/, "").trim();
+    const name = rawName.replace(/\s*you\s*$/, "").trim();
     const scoreText = await row.locator('[aria-label$=" points"]').textContent();
     result[name] = Number(scoreText);
   }
@@ -110,7 +125,7 @@ test("3-player room: staggered guesses, leaderboard and scores stay consistent a
   // All three clients should agree there are 3 players before starting —
   // this is itself a consistency check on Presence/players sync.
   for (const { page } of [host, p2, p3]) {
-    await expect(page.getByText(/^3 players$/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/^Players · 3$/)).toBeVisible({ timeout: 15_000 });
   }
 
   await host.page.getByRole("button", { name: "Start Game" }).click();
@@ -143,8 +158,10 @@ test("3-player room: staggered guesses, leaderboard and scores stay consistent a
 
     // Recap confirms the round actually ended (either by everyone-correct
     // early-end or timer expiry) before reading "final" per-round scores.
+    // No longer a modal dialog (round-recap.tsx is inline in the centre
+    // column now) — "next round starting…" is its stable, unique marker.
     for (const page of [host.page, p2.page, p3.page]) {
-      await expect(page.getByRole("dialog", { name: "Round recap" })).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText("next round starting…")).toBeVisible({ timeout: 20_000 });
     }
 
     const [hostBoard, p2Board, p3Board] = await Promise.all([
@@ -167,7 +184,7 @@ test("3-player room: staggered guesses, leaderboard and scores stay consistent a
     // Wait for the recap to clear before the next iteration reads the next
     // round's emoji card (or, on the last round, before checking results).
     for (const page of [host.page, p2.page, p3.page]) {
-      await expect(page.getByRole("dialog", { name: "Round recap" })).toBeHidden({ timeout: 15_000 });
+      await expect(page.getByText("next round starting…")).toBeHidden({ timeout: 15_000 });
     }
   }
 
