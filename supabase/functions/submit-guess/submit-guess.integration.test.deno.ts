@@ -31,6 +31,7 @@ import { assert, assertEquals } from "jsr:@std/assert@1";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { answerFor, difficultyFor } from "../_shared/seed-words.ts";
 import { difficultyScore } from "../_shared/guess.ts";
+import { MIXED_CATEGORY_ID } from "../_shared/categories.ts";
 
 const SUPABASE_URL = "https://solqgbkmfyaukdwwdxxm.supabase.co";
 const SUPABASE_KEY = "sb_publishable_6Pu76Kc_W-zalcdeiOr75A_TFiO9glF";
@@ -61,18 +62,17 @@ async function setUpRoomWithLiveRound() {
   const playerA = await newAnonClient();
   const playerB = await newAnonClient();
 
-  const { data: categories, error: catError } = await host
-    .from("categories")
-    .select("id")
-    .is("room_id", null)
-    .limit(1);
-  if (catError || !categories?.length) throw new Error("no seeded global category found");
-
+  // Mixed, not an unordered categories[0] pick — a single category can be
+  // empty (e.g. Food/Things after 20260820180000_delete_single_emoji_words.sql),
+  // which would end the game with no live round before this test ever gets
+  // to submit-guess. Mixed pools every global category and stays valid as
+  // long as any one of them (Movies) has words — matching seed-words.ts,
+  // which only mirrors Movies now.
   const created = await invoke<{ roomCode: string; roomId: string }>(host, "create-room", {
     displayName: "IntegHost",
     avatarId: "fox",
     roomName: "Integration test room",
-    categoryId: categories[0].id,
+    categoryId: MIXED_CATEGORY_ID,
     settings: { rounds: 3, secondsPerRound: 30 },
   });
   assert(created.ok, `create-room rejected: ${created.error?.message}`);

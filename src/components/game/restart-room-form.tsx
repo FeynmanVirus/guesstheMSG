@@ -53,7 +53,9 @@ export function RestartRoomForm({ roomCode }: RestartRoomFormProps) {
         .order("name");
       if (!cancelled && data) {
         setCategories(data);
-        if (data.length > 0) setCategoryId((prev) => prev || data[0].id);
+        // Default to Mixed, not the alphabetically-first category — see the
+        // matching comment in create-room-form.tsx.
+        if (data.length > 0) setCategoryId((prev) => prev || MIXED_CATEGORY_ID);
       }
     })();
     return () => {

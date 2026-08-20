@@ -74,7 +74,12 @@ export function CreateRoomForm({ displayName, avatarId }: CreateRoomFormProps) {
         .order("name");
       if (!cancelled && data) {
         setCategories(data);
-        if (data.length > 0) setCategoryId((prev) => prev || data[0].id);
+        // Default to Mixed, not the alphabetically-first category — a single
+        // category can end up with zero words (e.g. Food/Things after
+        // 20260820180000_delete_single_emoji_words.sql), and round-tick ends
+        // the game instantly if the pool is empty. Mixed pools every global
+        // category, so it stays safe even if another one empties out later.
+        if (data.length > 0) setCategoryId((prev) => prev || MIXED_CATEGORY_ID);
       }
     })();
     return () => {
