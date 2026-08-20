@@ -132,30 +132,30 @@ export function RoomLobby({ code }: RoomLobbyProps) {
   }
 
   if (room.status === "ended") {
-    // Results gets its own page-level shell in Phase 5 — this keeps the
-    // older centered-card treatment until then.
+    // GameResults owns the same wide shell RoomGame does — the host's
+    // rematch form (or the waiting notice) is its one caller-supplied slot,
+    // rendered below the standings/podium/chat grid.
     return (
-      <div className="flex flex-1 flex-col items-center px-6 py-10">
-        <div className="doodle-card w-full max-w-3xl space-y-6 p-6 sm:p-8">
-          <div className="relative text-center">
-            <p className="text-sm text-ink-muted">Room code</p>
-            <p className="font-heading text-3xl font-semibold tracking-wider text-ink">{code}</p>
-            <span className="absolute top-0 right-0">
-              <SoundToggle />
-            </span>
-          </div>
-
-          <GameResults myPlayerId={myPlayerId} />
-          {isHost ? (
-            <RestartRoomForm roomCode={code} />
-          ) : (
-            <WaitingForHost
-              hostName={host?.displayName ?? null}
-              hostOffline={!!host && offlineIds.has(host.id)}
-              action="start a new game"
-            />
-          )}
-        </div>
+      <div className="flex flex-1 flex-col items-center px-4 py-6 sm:px-6 sm:py-8">
+        <GameResults
+          roomCode={code}
+          myPlayerId={myPlayerId}
+          restartSlot={
+            isHost ? (
+              <div className="doodle-panel mx-auto w-full max-w-2xl p-5">
+                <RestartRoomForm roomCode={code} />
+              </div>
+            ) : (
+              <div className="text-center">
+                <WaitingForHost
+                  hostName={host?.displayName ?? null}
+                  hostOffline={!!host && offlineIds.has(host.id)}
+                  action="start a new game"
+                />
+              </div>
+            )
+          }
+        />
       </div>
     );
   }

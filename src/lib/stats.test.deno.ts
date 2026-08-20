@@ -51,15 +51,111 @@ Deno.test("computeStats: fastest average, most correct, and MVP each pick the ri
 
   const stats = computeStats(rounds);
 
-  assertEquals(stats.fastestAverage, { playerId: B, seconds: 4 });
+  // B's three correct guesses were 8s, 1s, 3s — average 4s, best (fastest
+  // single) 1s.
+  assertEquals(stats.fastestAverage, { playerId: B, seconds: 4, bestSeconds: 1 });
   assertEquals(stats.mostCorrect, { playerId: B, count: 3 });
   assertEquals(stats.mvp, { playerId: B, roundsWon: 2 });
+
+  // A and C never miss when they guess (2/2 and 0 attempts respectively —
+  // C never guessed in this fixture), so A is highest accuracy at 100%,
+  // tie-broken over B (also 100%, but 3/3) by lower player id.
+  assertEquals(stats.highestAccuracy, { playerId: A, correct: 2, attempts: 2, pct: 100 });
+
+  // B ranks 2nd after round 1 (500 < A's 900), climbs to 1st by round 2 and
+  // stays there — a real one-spot comeback, the biggest of the three.
+  assertEquals(stats.phoenix, { playerId: B, fromRank: 2, toRank: 1 });
+
+  assertEquals(stats.hardest, stats.rounds[2]);
 
   assertEquals(stats.rounds.length, 3);
   assertEquals(stats.rounds[0].solvers, 2);
   assertEquals(stats.rounds[0].best, { playerId: A, points: 900, seconds: 2 });
   assertEquals(stats.rounds[2].solvers, 1);
   assertEquals(stats.rounds[2].best, { playerId: B, points: 850, seconds: 3 });
+});
+
+Deno.test("computeStats: highest accuracy picks the best hit rate, not the most attempts", () => {
+  // A: 1 guess, 1 correct -> 100%. B: 4 guesses, 3 correct -> 75%.
+  const rounds: StatsRound[] = [
+    {
+      roundNumber: 1,
+      answer: "pizza",
+      startedAtMs: 0,
+      guesses: [
+        { playerId: A, isCorrect: true, points: 500, submittedAtMs: 1_000 },
+        { playerId: B, isCorrect: false, points: 0, submittedAtMs: 1_000 },
+        { playerId: B, isCorrect: true, points: 400, submittedAtMs: 2_000 },
+      ],
+    },
+    {
+      roundNumber: 2,
+      answer: "sushi",
+      startedAtMs: 10_000,
+      guesses: [
+        { playerId: B, isCorrect: false, points: 0, submittedAtMs: 10_500 },
+        { playerId: B, isCorrect: true, points: 300, submittedAtMs: 11_000 },
+      ],
+    },
+  ];
+
+  const stats = computeStats(rounds);
+  assertEquals(stats.highestAccuracy, { playerId: A, correct: 1, attempts: 1, pct: 100 });
+});
+
+Deno.test("computeStats: the Phoenix climbs from dead last to the win", () => {
+  // Round 1: B and C both solve, A misses -> A tied last (rank 3).
+  // Round 2: A solves big, B and C don't -> A takes the lead (rank 1).
+  const rounds: StatsRound[] = [
+    {
+      roundNumber: 1,
+      answer: "pizza",
+      startedAtMs: 0,
+      guesses: [
+        { playerId: A, isCorrect: false, points: 0, submittedAtMs: 1_000 },
+        { playerId: B, isCorrect: true, points: 300, submittedAtMs: 1_000 },
+        { playerId: C, isCorrect: true, points: 200, submittedAtMs: 1_000 },
+      ],
+    },
+    {
+      roundNumber: 2,
+      answer: "sushi",
+      startedAtMs: 10_000,
+      guesses: [{ playerId: A, isCorrect: true, points: 1_000, submittedAtMs: 11_000 }],
+    },
+  ];
+
+  const stats = computeStats(rounds);
+  // A: tied-last rank 3 after round 1 (0 points, same as nobody), rank 1
+  // after round 2 (1000 vs B/C's unchanged 300/200) — a 2-spot climb.
+  assertEquals(stats.phoenix, { playerId: A, fromRank: 3, toRank: 1 });
+});
+
+Deno.test("computeStats: hardest round is the one with the fewest solvers, earliest on a tie", () => {
+  const rounds: StatsRound[] = [
+    {
+      roundNumber: 1,
+      answer: "pizza",
+      startedAtMs: 0,
+      guesses: [{ playerId: A, isCorrect: true, points: 500, submittedAtMs: 1_000 }],
+    },
+    {
+      roundNumber: 2,
+      answer: "sushi",
+      startedAtMs: 10_000,
+      guesses: [{ playerId: A, isCorrect: false, points: 0, submittedAtMs: 10_500 }],
+    },
+    {
+      roundNumber: 3,
+      answer: "taco",
+      startedAtMs: 20_000,
+      guesses: [{ playerId: B, isCorrect: false, points: 0, submittedAtMs: 20_500 }],
+    },
+  ];
+
+  const stats = computeStats(rounds);
+  assertEquals(stats.hardest?.roundNumber, 2);
+  assertEquals(stats.hardest?.solvers, 0);
 });
 
 Deno.test("computeStats: a round's best is tie-broken by earliest submission on equal points", () => {
@@ -84,6 +180,9 @@ Deno.test("computeStats: an empty game reports all-null headline stats and no ro
   assertEquals(stats.fastestAverage, null);
   assertEquals(stats.mostCorrect, null);
   assertEquals(stats.mvp, null);
+  assertEquals(stats.highestAccuracy, null);
+  assertEquals(stats.phoenix, null);
+  assertEquals(stats.hardest, null);
   assertEquals(stats.rounds, []);
 });
 
@@ -100,8 +199,14 @@ Deno.test("computeStats: a round nobody solved reports zero solvers and a null b
   const stats = computeStats(rounds);
   assertEquals(stats.rounds, [{ roundNumber: 1, answer: "waffle", solvers: 0, best: null }]);
   // Nobody has a correct guess anywhere in the game — every headline stat
-  // (not just this round's `best`) must stay null, not default to player A.
+  // that requires one (not just this round's `best`) must stay null, not
+  // default to player A.
   assertEquals(stats.fastestAverage, null);
   assertEquals(stats.mostCorrect, null);
   assertEquals(stats.mvp, null);
+  // A still attempted, though — 0/1 is a real (if bleak) accuracy figure,
+  // and A's rank never moved (solo game), so no phoenix climb either.
+  assertEquals(stats.highestAccuracy, { playerId: A, correct: 0, attempts: 1, pct: 0 });
+  assertEquals(stats.phoenix, null);
+  assertEquals(stats.hardest, stats.rounds[0]);
 });

@@ -1,16 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "motion/react";
-import { Trophy, Zap, Target, Crown } from "lucide-react";
+import { Share2 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { Avatar } from "@/components/doodle/avatar";
+import { Squiggle } from "@/components/doodle/squiggle";
+import { Podium, type PodiumEntry } from "@/components/doodle/podium";
+import { ChatPanel } from "@/components/game/chat-panel";
+import { SoundToggle } from "@/components/game/sound-toggle";
 import { supabase } from "@/lib/supabase/client";
 import { useRoomStore, sortForLeaderboard } from "@/lib/room/store";
+import { categoryLabel } from "@/lib/categories";
 import { computeStats, type GameStats, type StatsRound } from "@/lib/stats";
 
 interface GameResultsProps {
+  roomCode: string;
   myPlayerId: string | null;
+  /** RestartRoomForm for the host, WaitingForHost for everyone else —
+   * room-lobby.tsx owns that branch, this just renders whatever it hands in
+   * below the standings. */
+  restartSlot: React.ReactNode;
 }
 
 /** The shape of canvas-confetti's callable default export, hand-typed
@@ -19,34 +28,32 @@ type ConfettiFn = ((options?: Record<string, unknown>) => Promise<null> | null) 
   reset: () => void;
 };
 
-// End of game (DESIGN.md §2.8): final leaderboard, the four headline stats
-// (fastest average guess, most correct, MVP, per-round breakdown), and
-// confetti for an outright winner. The host's restart flow lives alongside
-// this in room-lobby.tsx's `ended` branch (restart-room-form.tsx).
-export function GameResults({ myPlayerId }: GameResultsProps) {
-  // useShallow — see leaderboard.tsx for why the raw selector isn't safe.
+// End of game (DESIGN.md §2.8, mockup frame 1g): the same wide 3-column
+// shell as the in-game screen — final standings | podium & awards | chat —
+// plus confetti for an outright winner.
+export function GameResults({ roomCode, myPlayerId, restartSlot }: GameResultsProps) {
+  // useShallow: the selector builds a fresh array every call, which
+  // useSyncExternalStore rejects as an unstable snapshot unless wrapped.
   const players = useRoomStore(
     useShallow((s) =>
       sortForLeaderboard(Array.from(s.players.values()).filter((p) => p.status === "active")),
     ),
   );
-  // Separate from the sorted/filtered array above — this is for resolving a
-  // playerId out of historical guess rows, which may include a player who
-  // isn't `active` anymore.
-  const playersMap = useRoomStore((s) => s.players);
-  const roomId = useRoomStore((s) => s.room?.id ?? null);
+  const room = useRoomStore((s) => s.room);
 
   const winner = players[0] ?? null;
   // A tie at the top means nobody is "the" winner — don't crown one arbitrarily.
   const outrightWinner = winner && (players[1] === undefined || players[1].score < winner.score);
 
   const [stats, setStats] = useState<GameStats | null>(null);
+  const [correctCounts, setCorrectCounts] = useState<Record<string, number>>({});
+  const [shared, setShared] = useState(false);
 
   // Same "query Supabase directly for historical data" precedent as
   // round-recap.tsx — the Zustand store holds no round history, and this is
   // a one-time fetch, not something worth a live subscription.
   useEffect(() => {
-    if (!roomId) return;
+    if (!room) return;
     let cancelled = false;
 
     (async () => {
@@ -56,7 +63,7 @@ export function GameResults({ myPlayerId }: GameResultsProps) {
       const { data: session } = await supabase
         .from("game_sessions")
         .select("id")
-        .eq("room_id", roomId)
+        .eq("room_id", room.id)
         .order("session_number", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -73,25 +80,30 @@ export function GameResults({ myPlayerId }: GameResultsProps) {
         return;
       }
 
+      const counts: Record<string, number> = {};
       const rounds: StatsRound[] = (data ?? []).map((r) => ({
         roundNumber: r.round_number,
         answer: r.revealed_answer,
         startedAtMs: new Date(r.started_at).getTime(),
-        guesses: (r.guesses ?? []).map((g) => ({
-          playerId: g.player_id,
-          isCorrect: g.is_correct,
-          points: g.points_awarded,
-          submittedAtMs: new Date(g.submitted_at).getTime(),
-        })),
+        guesses: (r.guesses ?? []).map((g) => {
+          if (g.is_correct) counts[g.player_id] = (counts[g.player_id] ?? 0) + 1;
+          return {
+            playerId: g.player_id,
+            isCorrect: g.is_correct,
+            points: g.points_awarded,
+            submittedAtMs: new Date(g.submitted_at).getTime(),
+          };
+        }),
       }));
 
+      setCorrectCounts(counts);
       setStats(computeStats(rounds));
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [roomId]);
+  }, [room]);
 
   // Confetti for an outright winner only — reuses the tie-detection above.
   // Dynamically imported so the ~7kB library stays off every other route's
@@ -111,116 +123,151 @@ export function GameResults({ myPlayerId }: GameResultsProps) {
     return () => fire?.reset();
   }, [outrightWinner]);
 
+  async function handleShare() {
+    const text = winner
+      ? `${winner.displayName} won our Guessmoji game! ${window.location.href}`
+      : window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({ text, url: window.location.href });
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        setShared(true);
+        setTimeout(() => setShared(false), 1500);
+      }
+    } catch {
+      // User-cancelled share sheet, or clipboard blocked — both fine to
+      // just drop silently rather than surface as an error.
+    }
+  }
+
+  const totalRounds = stats?.rounds.length ?? 0;
+
+  const podiumEntries: PodiumEntry[] = players.slice(0, 3).map((p) => {
+    let award: string | undefined;
+    if (stats?.fastestAverage?.playerId === p.id) award = "⚡ Fastest guesser";
+    else if (stats?.highestAccuracy?.playerId === p.id && stats.highestAccuracy.attempts > 0) {
+      award = "🎯 Highest accuracy";
+    } else if (stats?.phoenix?.playerId === p.id) award = "🔥 The Phoenix";
+
+    let note: string | undefined;
+    if (award?.includes("Fastest") && stats?.fastestAverage) {
+      note = `best ${stats.fastestAverage.bestSeconds}s · avg ${stats.fastestAverage.seconds}s`;
+    } else if (award?.includes("accuracy") && stats?.highestAccuracy) {
+      note = `${stats.highestAccuracy.correct} of ${stats.highestAccuracy.attempts} guesses · ${stats.highestAccuracy.pct}%`;
+    } else if (award?.includes("Phoenix") && stats?.phoenix) {
+      note = `last at #${stats.phoenix.fromRank} → #${stats.phoenix.toRank}`;
+    }
+
+    return { playerId: p.id, avatarId: p.avatarId, displayName: p.displayName, points: p.score, award, note };
+  });
+
   return (
-    <div className="space-y-5">
-      <div className="text-center">
-        <p className="font-heading text-3xl font-semibold text-ink">Game over</p>
-        {outrightWinner ? (
-          <p className="mt-1 flex items-center justify-center gap-2 text-ink">
-            <Trophy className="size-5 text-sun" aria-hidden />
-            <span className="font-semibold">{winner.displayName}</span> wins with {winner.score}
+    <div className="mx-auto w-full max-w-[1280px] space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-baseline gap-3.5">
+          <p className="font-heading text-2xl font-bold text-ink">Guessmoji</p>
+          <p className="text-xs font-bold tracking-[0.14em] text-ink-muted uppercase">
+            {totalRounds} of {room?.totalRounds ?? totalRounds} · {categoryLabel(room?.categoryName ?? null)}{" "}
+            · complete
           </p>
-        ) : (
-          winner && <p className="mt-1 text-ink-muted">It&apos;s a tie at {winner.score}.</p>
-        )}
+        </div>
+        <div className="flex items-center gap-2.5">
+          <span className="flex items-center gap-2 rounded-full border-[2.5px] border-ink bg-sun px-4 py-1.5 text-sm font-bold text-ink shadow-pop-pressed">
+            🏁 game over
+          </span>
+          <SoundToggle />
+        </div>
       </div>
 
-      <ul className="space-y-2">
-        {players.map((player, index) => (
-          <motion.li
-            key={player.id}
-            layout
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 20, delay: index * 0.05 }}
-            className={`flex items-center gap-3 rounded-xl border-2 px-3 py-2 ${
-              index === 0 ? "border-sun bg-sun/10" : "border-ink/15 bg-surface"
-            }`}
-          >
-            <span className="w-5 text-center text-sm text-ink-muted">{index + 1}</span>
-            <Avatar avatarId={player.avatarId} className="size-9 text-lg" />
-            <p className="min-w-0 flex-1 truncate font-medium text-ink">
-              {player.displayName}
-              {player.id === myPlayerId && <span className="text-ink-muted"> (you)</span>}
-            </p>
-            <p className="font-heading text-xl font-semibold text-sun">{player.score}</p>
-          </motion.li>
-        ))}
-      </ul>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[270px_1fr_300px] lg:gap-[18px]">
+        <div className="doodle-panel space-y-2.5 p-4 lg:order-1">
+          <p className="font-heading text-xl font-bold text-ink">Final standings</p>
+          <div className="h-0 border-t-2 border-dashed border-hairline" />
+          <ul className="space-y-2">
+            {players.map((player, index) => (
+              <li
+                key={player.id}
+                className={`flex items-center gap-2.5 rounded-2xl px-2.5 py-2 ${
+                  index === 0
+                    ? "border-[2.5px] border-ink bg-sun shadow-pop-pressed"
+                    : "border-2 border-hairline"
+                }`}
+              >
+                <span className="w-4 text-center text-sm font-extrabold text-ink" aria-hidden>
+                  {index + 1}
+                </span>
+                <Avatar avatarId={player.avatarId} className="size-8 text-base" />
+                <span className="min-w-0 flex-1">
+                  <p className="block truncate text-sm font-extrabold text-ink">
+                    {player.displayName}
+                    {player.id === myPlayerId && (
+                      <>
+                        {" "}
+                        <span className="rounded-full border-[1.5px] border-ink bg-paper px-1.5 py-px text-[0.6rem] font-bold">
+                          you
+                        </span>
+                      </>
+                    )}
+                  </p>
+                  <span className="block text-[0.65rem] font-semibold text-ink-muted">
+                    {correctCounts[player.id] ?? 0} of {totalRounds} correct
+                  </span>
+                </span>
+                <p className="font-heading text-lg font-bold text-ink">{player.score}</p>
+              </li>
+            ))}
+          </ul>
 
-      {stats && (
-        <div className="space-y-2">
-          <StatLine
-            icon={<Crown className="size-4 text-sun" aria-hidden />}
-            label="MVP"
-            value={
-              stats.mvp &&
-              `${playersMap.get(stats.mvp.playerId)?.displayName ?? "Someone"} · won ${stats.mvp.roundsWon} round${
-                stats.mvp.roundsWon === 1 ? "" : "s"
-              }`
-            }
-          />
-          <StatLine
-            icon={<Zap className="size-4 text-sky" aria-hidden />}
-            label="Fastest average"
-            value={
-              stats.fastestAverage &&
-              `${playersMap.get(stats.fastestAverage.playerId)?.displayName ?? "Someone"} · ${stats.fastestAverage.seconds}s`
-            }
-          />
-          <StatLine
-            icon={<Target className="size-4 text-coral" aria-hidden />}
-            label="Most correct"
-            value={
-              stats.mostCorrect &&
-              `${playersMap.get(stats.mostCorrect.playerId)?.displayName ?? "Someone"} · ${stats.mostCorrect.count}`
-            }
-          />
-
-          {stats.rounds.length > 0 && (
-            <details className="doodle-card p-4 text-sm text-ink">
-              <summary className="cursor-pointer font-medium">Round by round</summary>
-              <ul className="mt-2 space-y-1.5">
-                {stats.rounds.map((r) => (
-                  <li key={r.roundNumber} className="flex items-center justify-between gap-2">
-                    <span className="text-ink-muted">
-                      #{r.roundNumber} · {r.answer ? capitalize(r.answer) : "…"}
-                    </span>
-                    <span>
-                      {r.best
-                        ? `${playersMap.get(r.best.playerId)?.displayName ?? "Someone"} · +${r.best.points} · ${r.best.seconds}s`
-                        : "Nobody"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </details>
+          {stats?.hardest && (
+            <div className="doodle-dashed p-3">
+              <p className="font-heading text-base font-bold text-ink">hardest sequence</p>
+              <p className="text-xs font-semibold text-ink-muted">
+                {stats.hardest.answer ? capitalize(stats.hardest.answer) : "…"} ·{" "}
+                {stats.hardest.solvers === 0
+                  ? "nobody got it"
+                  : `${stats.hardest.solvers} solver${stats.hardest.solvers === 1 ? "" : "s"}`}
+              </p>
+            </div>
           )}
         </div>
-      )}
-    </div>
-  );
-}
 
-function StatLine({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string | null | undefined;
-}) {
-  // Skip a line entirely rather than render "MVP: —" — a stat with no
-  // qualifying player (e.g. nobody guessed correctly all game) just isn't
-  // shown, not asserted as empty.
-  if (!value) return null;
-  return (
-    <p className="flex items-center gap-2 text-sm text-ink">
-      {icon}
-      <span className="text-ink-muted">{label}</span>
-      <span className="font-medium">{value}</span>
-    </p>
+        <div className="doodle-panel flex min-h-[420px] flex-col items-center gap-2 p-5 text-center lg:order-2 lg:min-h-[560px]">
+          <p className="text-xs font-bold tracking-[0.16em] text-ink-muted uppercase">
+            {totalRounds} rounds · final
+          </p>
+          <p className="mt-1 font-heading text-4xl font-bold text-ink">
+            {outrightWinner ? `${winner.displayName} wins 🎉` : winner ? `Tied at ${winner.score}` : "Game over"}
+          </p>
+          <Squiggle color="sun" width={160} />
+
+          <div className="flex w-full flex-1 items-end px-4 pt-2.5">
+            {podiumEntries.length > 0 ? (
+              <Podium entries={podiumEntries} />
+            ) : (
+              <p className="m-auto text-sm text-ink-muted">No players finished this game.</p>
+            )}
+          </div>
+
+          <div className="flex w-full items-center gap-3 border-t-2 border-dashed border-hairline pt-3.5">
+            <button
+              type="button"
+              onClick={handleShare}
+              className="ml-auto flex items-center gap-1.5 rounded-full border-2 border-ink bg-paper px-4 py-2 text-sm font-bold text-ink"
+            >
+              <Share2 className="size-3.5" aria-hidden />
+              {shared ? "link copied" : "share results"}
+            </button>
+          </div>
+        </div>
+
+        <div className="lg:order-3">
+          <ChatPanel roomCode={roomCode} disabled={false} isSpectator={false} myPlayerId={myPlayerId} />
+        </div>
+      </div>
+
+      {restartSlot}
+    </div>
   );
 }
 
