@@ -1,5 +1,4 @@
-import Image from "next/image";
-import { avatarSrc } from "@/lib/avatars";
+import { Avatar } from "@/components/doodle/avatar";
 import { HostBadge } from "@/components/room/host-badge";
 import { ConnectionIndicator } from "@/components/room/connection-indicator";
 import type { RoomPlayer } from "@/lib/room/types";
@@ -17,14 +16,7 @@ export function PlayerListItem({ player, isSelf, connected }: PlayerListItemProp
         connected ? "" : "opacity-60"
       }`}
     >
-      <Image
-        src={avatarSrc(player.avatarId)}
-        alt=""
-        width={40}
-        height={40}
-        className="size-10 rounded-full border-2 border-ink/40"
-        unoptimized
-      />
+      <Avatar avatarId={player.avatarId} className="size-10 text-xl" />
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium text-ink">
           {player.displayName}

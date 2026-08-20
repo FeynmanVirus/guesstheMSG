@@ -1,13 +1,13 @@
 "use client";
 
-import Image from "next/image";
 import { useState } from "react";
 import { Pencil } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AvatarPicker } from "@/components/home/avatar-picker";
-import { avatarSrc, type AvatarId } from "@/lib/avatars";
+import { Avatar } from "@/components/doodle/avatar";
+import type { AvatarId } from "@/lib/avatars";
 
 interface IdentityFieldsProps {
   displayName: string;
@@ -47,14 +47,7 @@ export function IdentityFields({
             aria-label="Choose your avatar"
             className="doodle-btn relative size-12 shrink-0 bg-surface p-0 outline-none focus-visible:ring-2 focus-visible:ring-sky"
           >
-            <Image
-              src={avatarSrc(avatarId)}
-              alt=""
-              width={48}
-              height={48}
-              className="size-full rounded-full"
-              unoptimized
-            />
+            <Avatar avatarId={avatarId} className="size-full text-2xl" />
             <span className="absolute -right-1 -bottom-1 flex size-5 items-center justify-center rounded-full border-2 border-ink bg-lavender">
               <Pencil className="size-2.5 text-ink" aria-hidden />
             </span>

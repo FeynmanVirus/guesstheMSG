@@ -1,26 +1,45 @@
-// Avatar id catalogue. Matches the 12 files pre-rendered by
-// scripts/generate-avatars.mjs into public/avatars/peep-01.svg..peep-12.svg
-// (DESIGN.md §3: "pre-rendered to static SVGs at build time — no runtime
-// API calls"). `players.avatar_id` stores one of these ids as plain text.
+// Avatar id catalogue. An avatar is an emoji on a colored circle (DESIGN.md
+// §3) — no image asset, no runtime API call, nothing to pre-render.
+// `players.avatar_id` stores one of these ids as plain text (no DB check
+// constraint; isValidAvatarId is the only gate, enforced here and by every
+// caller that accepts a client-supplied avatarId).
 
 export const AVATAR_IDS = [
-  "peep-01",
-  "peep-02",
-  "peep-03",
-  "peep-04",
-  "peep-05",
-  "peep-06",
-  "peep-07",
-  "peep-08",
-  "peep-09",
-  "peep-10",
-  "peep-11",
-  "peep-12",
+  "fox",
+  "frog",
+  "penguin",
+  "unicorn",
+  "octopus",
+  "koala",
+  "bee",
+  "whale",
+  "owl",
+  "flamingo",
+  "turtle",
+  "dice",
 ] as const;
 
 export type AvatarId = (typeof AVATAR_IDS)[number];
 
 export const DEFAULT_AVATAR_ID: AvatarId = AVATAR_IDS[0];
+
+/** One of the five DESIGN.md §3 accents, used as the circle fill. */
+export type AvatarAccent = "sage" | "sun" | "sky" | "lavender" | "coral";
+
+export const AVATAR_FACE: Record<AvatarId, { emoji: string; accent: AvatarAccent }> = {
+  fox: { emoji: "🦊", accent: "sage" },
+  frog: { emoji: "🐸", accent: "sun" },
+  penguin: { emoji: "🐧", accent: "sky" },
+  unicorn: { emoji: "🦄", accent: "lavender" },
+  octopus: { emoji: "🐙", accent: "coral" },
+  koala: { emoji: "🐨", accent: "sage" },
+  bee: { emoji: "🐝", accent: "sun" },
+  whale: { emoji: "🐳", accent: "sky" },
+  owl: { emoji: "🦉", accent: "lavender" },
+  flamingo: { emoji: "🦩", accent: "coral" },
+  turtle: { emoji: "🐢", accent: "sage" },
+  dice: { emoji: "🎲", accent: "sun" },
+};
 
 export function isValidAvatarId(value: unknown): value is AvatarId {
   return typeof value === "string" && (AVATAR_IDS as readonly string[]).includes(value);

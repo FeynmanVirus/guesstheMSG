@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { motion } from "motion/react";
-import { avatarSrc } from "@/lib/avatars";
+import { Avatar } from "@/components/doodle/avatar";
 import { supabase } from "@/lib/supabase/client";
 import { useRoomStore } from "@/lib/room/store";
 import type { RoundInfo } from "@/lib/room/types";
@@ -101,14 +100,7 @@ export function RoundRecap({ round }: RoundRecapProps) {
                     <span className="w-5 text-center text-sm" aria-hidden>
                       {RANK_MEDAL[i]}
                     </span>
-                    <Image
-                      src={avatarSrc(p.avatarId)}
-                      alt=""
-                      width={32}
-                      height={32}
-                      className="size-8 rounded-full border-2 border-ink/40"
-                      unoptimized
-                    />
+                    <Avatar avatarId={p.avatarId} className="size-8 text-base" />
                     <p className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
                       {p.displayName}
                     </p>

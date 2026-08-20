@@ -1,9 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import { motion } from "motion/react";
 import { useShallow } from "zustand/react/shallow";
-import { avatarSrc } from "@/lib/avatars";
+import { Avatar } from "@/components/doodle/avatar";
 import { useRoomStore, sortForLeaderboard } from "@/lib/room/store";
 
 interface LeaderboardProps {
@@ -39,14 +38,7 @@ export function Leaderboard({ myPlayerId }: LeaderboardProps) {
             <span className="w-5 text-center text-sm text-ink-muted" aria-hidden>
               {RANK_MEDAL[index] ?? index + 1}
             </span>
-            <Image
-              src={avatarSrc(player.avatarId)}
-              alt=""
-              width={32}
-              height={32}
-              className="size-8 rounded-full border-2 border-ink/40"
-              unoptimized
-            />
+            <Avatar avatarId={player.avatarId} className="size-8 text-base" />
             <p className="min-w-0 flex-1 truncate font-medium text-ink">
               {player.displayName}
               {player.id === myPlayerId && <span className="text-ink-muted"> (you)</span>}

@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { motion } from "motion/react";
 import { Trophy, Zap, Target, Crown } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
-import { avatarSrc } from "@/lib/avatars";
+import { Avatar } from "@/components/doodle/avatar";
 import { supabase } from "@/lib/supabase/client";
 import { useRoomStore, sortForLeaderboard } from "@/lib/room/store";
 import { computeStats, type GameStats, type StatsRound } from "@/lib/stats";
@@ -139,14 +138,7 @@ export function GameResults({ myPlayerId }: GameResultsProps) {
             }`}
           >
             <span className="w-5 text-center text-sm text-ink-muted">{index + 1}</span>
-            <Image
-              src={avatarSrc(player.avatarId)}
-              alt=""
-              width={36}
-              height={36}
-              className="size-9 rounded-full border-2 border-ink/40"
-              unoptimized
-            />
+            <Avatar avatarId={player.avatarId} className="size-9 text-lg" />
             <p className="min-w-0 flex-1 truncate font-medium text-ink">
               {player.displayName}
               {player.id === myPlayerId && <span className="text-ink-muted"> (you)</span>}

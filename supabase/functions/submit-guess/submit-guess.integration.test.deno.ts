@@ -70,7 +70,7 @@ async function setUpRoomWithLiveRound() {
 
   const created = await invoke<{ roomCode: string; roomId: string }>(host, "create-room", {
     displayName: "IntegHost",
-    avatarId: "peep-01",
+    avatarId: "fox",
     roomName: "Integration test room",
     categoryId: categories[0].id,
     settings: { rounds: 3, secondsPerRound: 30 },
@@ -83,7 +83,7 @@ async function setUpRoomWithLiveRound() {
     const joined = await invoke(client, "join-room", {
       roomCode,
       displayName: name,
-      avatarId: "peep-02",
+      avatarId: "frog",
     });
     assert(joined.ok, `join-room rejected for ${name}: ${joined.error?.message}`);
   }
