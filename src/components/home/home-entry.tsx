@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Sparkles, LogIn } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { PopButton } from "@/components/doodle/pop-button";
+import { Squiggle } from "@/components/doodle/squiggle";
 import { IdentityFields } from "@/components/home/identity-fields";
 import { CreateRoomForm } from "@/components/home/create-room-form";
 import { JoinRoomForm } from "@/components/home/join-room-form";
@@ -62,57 +63,67 @@ export function HomeEntry({ initialCode }: HomeEntryProps) {
   }
 
   return (
-    <div className="doodle-card mx-auto w-full max-w-3xl space-y-6 p-6 sm:p-10">
-      <div
-        className={
-          mode === "idle" ? "grid gap-6 sm:grid-cols-[1.15fr_1fr] sm:items-center sm:gap-10" : ""
-        }
-      >
-        <IdentityFields
-          displayName={displayName}
-          onDisplayNameChange={setDisplayName}
-          avatarId={avatarId}
-          onAvatarIdChange={setAvatarId}
-        />
+    <div className="doodle-card mx-auto w-full max-w-md space-y-5 p-6 sm:p-8">
+      {mode === "idle" ? (
+        <>
+          <div className="flex flex-col items-center gap-0.5 text-center">
+            <p className="font-heading text-5xl font-bold text-ink sm:text-6xl">Guessmoji</p>
+            <p className="mt-1 text-2xl" aria-hidden>
+              🍿 🕵️ 🎬
+            </p>
+          </div>
 
-        {mode === "idle" && (
+          <Squiggle color="sun" className="mx-auto" />
+
+          <IdentityFields
+            displayName={displayName}
+            onDisplayNameChange={setDisplayName}
+            avatarId={avatarId}
+            onAvatarIdChange={setAvatarId}
+          />
+
           <div className="space-y-2">
             <div className="flex flex-col gap-3">
-              <Button
-                type="button"
+              <PopButton
+                accent="coral"
+                icon={<Sparkles className="size-5" aria-hidden />}
+                title="Create Room"
+                subtitle="set the rules, invite friends"
                 disabled={!canProceed || starting}
                 onClick={() => startFlow("create")}
-                className="doodle-btn h-16 gap-2 bg-sun text-lg font-heading font-bold text-ink hover:bg-sun/90 sm:h-20 sm:text-xl"
-              >
-                <Sparkles className="size-5 sm:size-6" aria-hidden />
-                Create Room
-              </Button>
-              <Button
-                type="button"
+              />
+              <PopButton
+                accent="sky"
+                icon={<LogIn className="size-5" aria-hidden />}
+                title="Join Room"
+                subtitle="got a code? hop in"
                 disabled={!canProceed || starting}
                 onClick={() => startFlow("join")}
-                className="doodle-btn h-16 gap-2 bg-sky text-lg font-heading font-bold text-ink hover:bg-sky/90 sm:h-20 sm:text-xl"
-              >
-                <LogIn className="size-5 sm:size-6" aria-hidden />
-                Join Room
-              </Button>
+              />
             </div>
             {!canProceed && (
-              <p className="text-sm text-ink-muted">Enter your name to continue.</p>
+              <p className="text-center text-sm text-ink-muted">Enter your name to continue.</p>
             )}
           </div>
-        )}
-      </div>
 
-      {mode !== "idle" && (
-        <div className="space-y-4 border-t-2 border-dashed border-ink/20 pt-6">
-          <button
-            type="button"
-            onClick={() => setMode("idle")}
-            className="text-sm text-sky underline underline-offset-2"
-          >
-            ← Back
-          </button>
+          <p className="text-center text-xs font-semibold text-ink-muted">how to play</p>
+        </>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setMode("idle")}
+              aria-label="Back"
+              className="doodle-btn flex size-9 shrink-0 items-center justify-center text-base font-bold text-ink"
+            >
+              ←
+            </button>
+            <p className="font-heading text-3xl font-bold text-ink">
+              {mode === "create" ? "Create room" : "Join room"}
+            </p>
+          </div>
+          <div className={`h-0 border-t-2 border-dashed ${mode === "create" ? "border-coral" : "border-sky"}`} />
           {mode === "create" ? (
             <CreateRoomForm displayName={displayName.trim()} avatarId={avatarId} />
           ) : (

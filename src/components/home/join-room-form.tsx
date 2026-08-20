@@ -2,9 +2,10 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Bell, Lock } from "lucide-react";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { PopButton } from "@/components/doodle/pop-button";
+import { RoomCodeInput } from "@/components/home/room-code-input";
 import { FormError } from "@/components/home/form-error";
 import { ensureAnonSession } from "@/lib/supabase/client";
 import { callFunction } from "@/lib/api";
@@ -74,37 +75,47 @@ export function JoinRoomForm({ displayName, avatarId, initialCode }: JoinRoomFor
     <form onSubmit={handleSubmit} className="space-y-4">
       <FormError message={error} />
 
-      <div className="space-y-1.5">
-        <Label htmlFor="room-code">Room code</Label>
-        <Input
-          id="room-code"
-          value={roomCode}
-          onChange={(e) => setRoomCode(normalizeRoomCode(e.target.value))}
-          placeholder="FOX-482"
-          maxLength={7}
-          inputMode="text"
-          autoComplete="off"
-          className="font-heading text-lg tracking-wider"
-          required
-        />
+      <div className="space-y-2">
+        {/* No htmlFor: this labels the whole 6-box group (aria-label="Room
+            code" on its own container), not a single focusable input. */}
+        <Label className="text-xs font-bold tracking-[0.14em] text-ink-muted uppercase">
+          Room code
+        </Label>
+        <RoomCodeInput value={roomCode} onChange={setRoomCode} />
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="join-password">Password (if the room has one)</Label>
-        <Input
-          id="join-password"
-          ref={passwordRef}
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="current-password"
-        />
+        <Label
+          htmlFor="join-password"
+          className="text-xs font-bold tracking-[0.14em] text-ink-muted uppercase"
+        >
+          Password
+        </Label>
+        <div className="flex items-center gap-2 rounded-2xl border-[2.5px] border-ink bg-surface pr-3.5 shadow-panel focus-within:ring-2 focus-within:ring-sky">
+          <input
+            id="join-password"
+            ref={passwordRef}
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="enter if asked"
+            autoComplete="current-password"
+            className="h-auto flex-1 rounded-2xl bg-transparent px-3.5 py-3 text-lg font-extrabold text-ink outline-none placeholder:text-placeholder"
+          />
+          <Lock className="size-4.5 shrink-0 text-ink-muted" aria-hidden />
+        </div>
         {passwordError && <p className="text-sm text-coral">{passwordError}</p>}
       </div>
 
-      <Button type="submit" disabled={submitting} className="doodle-btn w-full">
-        {submitting ? "Joining…" : "Join room"}
-      </Button>
+      <PopButton
+        accent="sky"
+        icon={<Bell className="size-5" aria-hidden />}
+        title="Knock knock"
+        subtitle="join the room"
+        type="submit"
+        disabled={submitting}
+        className="w-full"
+      />
     </form>
   );
 }

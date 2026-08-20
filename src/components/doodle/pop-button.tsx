@@ -66,16 +66,25 @@ export function PopButton(props: PopButtonProps) {
     </>
   );
 
+  // aria-label={title}: without it, the accessible name would concatenate
+  // every visible text node (title + subtitle + the decorative "›"), which
+  // reads worse to a screen reader than the title alone conveys on its own.
   if (isLink(props)) {
     return (
-      <Link href={props.href} className={classes}>
+      <Link href={props.href} aria-label={title} className={classes}>
         {content}
       </Link>
     );
   }
 
   return (
-    <button type={props.type ?? "button"} onClick={props.onClick} disabled={props.disabled} className={classes}>
+    <button
+      type={props.type ?? "button"}
+      onClick={props.onClick}
+      disabled={props.disabled}
+      aria-label={title}
+      className={classes}
+    >
       {content}
     </button>
   );

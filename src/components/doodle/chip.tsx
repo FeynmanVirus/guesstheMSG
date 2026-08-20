@@ -19,12 +19,15 @@ interface ChipProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   accent?: keyof typeof ACCENT_BG;
 }
 
+// No default aria-pressed here: a lone toggle chip wants aria-pressed, but a
+// chip in an exclusive group (category, time-per-round) wants role="radio" +
+// aria-checked instead — that's the caller's call, passed through via
+// ...props rather than guessed here.
 export function Chip({ selected, accent = "coral", className, children, ...props }: ChipProps) {
   return (
     <button
       type="button"
       data-selected={selected}
-      aria-pressed={selected}
       className={cn(
         "doodle-chip px-4 py-2 text-sm font-bold text-ink",
         selected && ACCENT_BG[accent],
