@@ -52,14 +52,22 @@ export function RoomGame({ roomCode, myPlayerId, isSpectator }: RoomGameProps) {
         </div>
       </div>
 
+      {/* Mobile order (below lg) is explicit on all three: stage, then
+          leaderboard, then chat — DESIGN.md §2.4, "so the puzzle is never
+          pushed below the fold." A leaderboard with 8+ players can run past
+          1000px unconstrained, which used to bury the stage AND chat behind
+          it since only the lg: order was ever set (defaulting to raw DOM
+          order — leaderboard first — below lg). Once any sibling sets an
+          explicit order, the others need one too, or they'd fall back to
+          the implicit order:0 and jump ahead of a sibling that's now >0. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[270px_1fr_300px] lg:gap-[18px]">
         {/* lg:self-start: don't stretch to match the middle/chat columns'
             height — stay sized to however many players there are. */}
-        <div className="lg:order-1 lg:self-start">
+        <div className="order-2 lg:order-1 lg:self-start">
           <Leaderboard myPlayerId={myPlayerId} />
         </div>
 
-        <div className="lg:order-2">
+        <div className="order-1 lg:order-2">
           {/* The emoji stage <-> recap swap is the only thing keyed/animated
               here — round.id alone would re-key on every server write to
               the same round (e.g. the reveal itself), so live is folded
@@ -78,9 +86,17 @@ export function RoomGame({ roomCode, myPlayerId, isSpectator }: RoomGameProps) {
         </div>
 
         {/* lg:relative: containing block for ChatPanel's lg:absolute
-            inset-0 (see chat-panel.tsx for why it isn't lg:h-full). */}
-        <div className="lg:order-3 lg:relative">
-          <ChatPanel key={round.id} roomCode={roomCode} live={live} isSpectator={isSpectator} myPlayerId={myPlayerId} />
+            inset-0 (see chat-panel.tsx for why it isn't lg:h-full). No key
+            here anymore — see guess-input.tsx for why remounting on every
+            round used to wipe in-progress chat text. */}
+        <div className="order-3 lg:order-3 lg:relative">
+          <ChatPanel
+            roomCode={roomCode}
+            live={live}
+            isSpectator={isSpectator}
+            myPlayerId={myPlayerId}
+            roundId={round.id}
+          />
         </div>
       </div>
     </div>

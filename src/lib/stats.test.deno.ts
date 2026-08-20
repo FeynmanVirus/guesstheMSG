@@ -57,10 +57,10 @@ Deno.test("computeStats: fastest average, most correct, and MVP each pick the ri
   assertEquals(stats.mostCorrect, { playerId: B, count: 3 });
   assertEquals(stats.mvp, { playerId: B, roundsWon: 2 });
 
-  // A and C never miss when they guess (2/2 and 0 attempts respectively —
-  // C never guessed in this fixture), so A is highest accuracy at 100%,
-  // tie-broken over B (also 100%, but 3/3) by lower player id.
-  assertEquals(stats.highestAccuracy, { playerId: A, correct: 2, attempts: 2, pct: 100 });
+  // A and B are both 100% (2/2 and 3/3), but A's 2 attempts are below
+  // MIN_ACCURACY_ATTEMPTS (3) — B is the only one who clears the floor, so
+  // B wins despite the tie-break rule (lower id) that would otherwise favor A.
+  assertEquals(stats.highestAccuracy, { playerId: B, correct: 3, attempts: 3, pct: 100 });
 
   // B ranks 2nd after round 1 (500 < A's 900), climbs to 1st by round 2 and
   // stays there — a real one-spot comeback, the biggest of the three.
@@ -76,7 +76,8 @@ Deno.test("computeStats: fastest average, most correct, and MVP each pick the ri
 });
 
 Deno.test("computeStats: highest accuracy picks the best hit rate, not the most attempts", () => {
-  // A: 1 guess, 1 correct -> 100%. B: 4 guesses, 3 correct -> 75%.
+  // A: 3 guesses, 3 correct -> 100%. B: 4 guesses, 3 correct -> 75%. Both
+  // clear MIN_ACCURACY_ATTEMPTS, so this isolates the pct comparison itself.
   const rounds: StatsRound[] = [
     {
       roundNumber: 1,
@@ -93,14 +94,64 @@ Deno.test("computeStats: highest accuracy picks the best hit rate, not the most 
       answer: "sushi",
       startedAtMs: 10_000,
       guesses: [
+        { playerId: A, isCorrect: true, points: 450, submittedAtMs: 10_500 },
         { playerId: B, isCorrect: false, points: 0, submittedAtMs: 10_500 },
         { playerId: B, isCorrect: true, points: 300, submittedAtMs: 11_000 },
       ],
     },
+    {
+      roundNumber: 3,
+      answer: "taco",
+      startedAtMs: 20_000,
+      guesses: [{ playerId: A, isCorrect: true, points: 600, submittedAtMs: 20_500 }],
+    },
   ];
 
   const stats = computeStats(rounds);
-  assertEquals(stats.highestAccuracy, { playerId: A, correct: 1, attempts: 1, pct: 100 });
+  assertEquals(stats.highestAccuracy, { playerId: A, correct: 3, attempts: 3, pct: 100 });
+});
+
+Deno.test("computeStats: highest accuracy ignores a lucky guess below the minimum attempt floor", () => {
+  // A: 1 guess, 1 correct -> 100%, but only 1 attempt. B: 5 guesses, 4
+  // correct -> 80%, clears the floor. B should win despite the lower pct.
+  const rounds: StatsRound[] = [
+    {
+      roundNumber: 1,
+      answer: "pizza",
+      startedAtMs: 0,
+      guesses: [
+        { playerId: A, isCorrect: true, points: 500, submittedAtMs: 1_000 },
+        { playerId: B, isCorrect: true, points: 400, submittedAtMs: 1_000 },
+      ],
+    },
+    {
+      roundNumber: 2,
+      answer: "sushi",
+      startedAtMs: 10_000,
+      guesses: [{ playerId: B, isCorrect: true, points: 300, submittedAtMs: 10_500 }],
+    },
+    {
+      roundNumber: 3,
+      answer: "taco",
+      startedAtMs: 20_000,
+      guesses: [{ playerId: B, isCorrect: true, points: 250, submittedAtMs: 20_500 }],
+    },
+    {
+      roundNumber: 4,
+      answer: "waffle",
+      startedAtMs: 30_000,
+      guesses: [{ playerId: B, isCorrect: true, points: 200, submittedAtMs: 30_500 }],
+    },
+    {
+      roundNumber: 5,
+      answer: "burger",
+      startedAtMs: 40_000,
+      guesses: [{ playerId: B, isCorrect: false, points: 0, submittedAtMs: 40_500 }],
+    },
+  ];
+
+  const stats = computeStats(rounds);
+  assertEquals(stats.highestAccuracy, { playerId: B, correct: 4, attempts: 5, pct: 80 });
 });
 
 Deno.test("computeStats: the Phoenix climbs from dead last to the win", () => {
@@ -204,9 +255,10 @@ Deno.test("computeStats: a round nobody solved reports zero solvers and a null b
   assertEquals(stats.fastestAverage, null);
   assertEquals(stats.mostCorrect, null);
   assertEquals(stats.mvp, null);
-  // A still attempted, though — 0/1 is a real (if bleak) accuracy figure,
-  // and A's rank never moved (solo game), so no phoenix climb either.
-  assertEquals(stats.highestAccuracy, { playerId: A, correct: 0, attempts: 1, pct: 0 });
+  // A attempted once, but that's below MIN_ACCURACY_ATTEMPTS, so accuracy
+  // stays null rather than reporting a single 0/1 as "highest." A's rank
+  // never moved either way (solo game), so no phoenix climb.
+  assertEquals(stats.highestAccuracy, null);
   assertEquals(stats.phoenix, null);
   assertEquals(stats.hardest, stats.rounds[0]);
 });

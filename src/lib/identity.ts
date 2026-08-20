@@ -5,7 +5,7 @@
 // the code pre-filled.
 "use client";
 
-import { AVATAR_IDS, DEFAULT_AVATAR_ID, isValidAvatarId, type AvatarId } from "@shared/avatars";
+import { AVATAR_IDS, isValidAvatarId, type AvatarId } from "@shared/avatars";
 
 const KEYS = {
   displayName: "guessthemsg:displayName",
@@ -35,9 +35,13 @@ export function getSavedDisplayName(): string {
   return safeGet(KEYS.displayName) ?? "";
 }
 
-export function getSavedAvatarId(): AvatarId {
+// Returns null (not DEFAULT_AVATAR_ID) when nothing valid is saved, so a
+// first-time visitor's `getSavedAvatarId() ?? randomAvatarId()` call
+// actually reaches randomAvatarId() instead of always landing on the same
+// default face — a non-nullable return here previously made that `??` dead.
+export function getSavedAvatarId(): AvatarId | null {
   const saved = safeGet(KEYS.avatarId);
-  return isValidAvatarId(saved) ? saved : DEFAULT_AVATAR_ID;
+  return isValidAvatarId(saved) ? saved : null;
 }
 
 export function randomAvatarId(): AvatarId {

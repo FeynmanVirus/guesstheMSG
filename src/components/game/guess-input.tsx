@@ -18,6 +18,11 @@ interface GuessInputProps {
   /** For the optimistic echo's playerId. Null only in the impossible
    * pre-bootstrap case, where the echo is simply skipped. */
   myPlayerId: string | null;
+  /** Null on screens with no round concept (game-results.tsx). Only used to
+   * notice a new round has started so `solved`/`error` can reset — see the
+   * comment above the render-phase check below for why this isn't a `key`
+   * on the component instead. */
+  roundId: string | null;
 }
 
 interface GuessResult {
@@ -56,8 +61,12 @@ const PENDING_TIMEOUT_MS = 4000;
 // the placeholder against the real row once it lands (store.ts's
 // stripEchoes, matched on playerId+body).
 //
-// The parent keys this component by round.id, so a new round remounts it
-// and "solved" naturally starts back at false — no reset effect needed.
+// The parent used to key this component by round.id so a new round would
+// remount it and reset `solved` for free. That also wiped `text` and
+// dropped focus on every round transition — losing whatever a player was
+// mid-typing the instant a round ended. Now the parent never remounts this;
+// instead `roundId` is a prop, and `solved`/`error` reset via the "adjust
+// state during render" pattern below, leaving `text` alone.
 //
 // A muted player's echo deliberately never reconciles: submit-guess accepts
 // and silently drops their message (no chat_messages row is ever written —
@@ -68,11 +77,22 @@ const PENDING_TIMEOUT_MS = 4000;
 // stuck message from *looking* different too — it settles out of the
 // pending state on a timer so it reads as an ordinary sent message instead
 // of a spinner that never resolves (which would itself be a tell).
-export function GuessInput({ roomCode, live, isSpectator, myPlayerId }: GuessInputProps) {
+export function GuessInput({ roomCode, live, isSpectator, myPlayerId, roundId }: GuessInputProps) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [solved, setSolved] = useState(false);
   const [flash, setFlash] = useState(false);
+
+  // Adjust state during render (React's documented alternative to an effect
+  // for "reset state when a prop changes") rather than remounting via a
+  // `key` — this is what lets `solved`/`error` reset on a new round while
+  // `text` (and DOM focus) survive the transition untouched.
+  const [prevRoundId, setPrevRoundId] = useState(roundId);
+  if (roundId !== prevRoundId) {
+    setPrevRoundId(roundId);
+    setSolved(false);
+    setError(null);
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();

@@ -36,12 +36,22 @@ Deno.serve(async (req) => {
   }
 
   const caller = createCallerClient(req);
-  // Kicked off now, awaited together with the room lookup below — a GoTrue
-  // network hop that doesn't depend on anything in the request body, so
-  // there's no reason to block it behind body parsing. It stays a fully
-  // awaited step (never skipped) — it's the only authorization boundary in
-  // this function, since everything after runs on the service-role client,
-  // which bypasses RLS entirely.
+  // Kicked off now rather than after body parsing, so this GoTrue network
+  // hop overlaps with the (fast, synchronous-ish) req.json() + room-code
+  // validation below instead of waiting behind them.
+  //
+  // It can NOT be overlapped with guess_context (the next network hop,
+  // below) — that RPC takes p_auth_user_id: user.id as an argument, so it
+  // structurally needs this to resolve first. A version of this comment
+  // used to claim otherwise; it was wrong. Cutting that hop for real means
+  // either verifying the JWT locally instead of calling GoTrue over the
+  // network (removes the hop entirely, but is a security-sensitive change —
+  // deliberately not done here without a dedicated look) or merging
+  // guess_context + record_guess into one RPC (saves a different hop — see
+  // that function's own comment). It stays a fully awaited step regardless
+  // — it's the only authorization boundary in this function, since
+  // everything after runs on the service-role client, which bypasses RLS
+  // entirely.
   const userPromise = caller.auth.getUser();
 
   let body: Record<string, unknown>;

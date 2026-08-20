@@ -27,6 +27,16 @@ Deno.test("normalizeGuess makes casing, punctuation and spacing irrelevant", () 
   assertEquals(normalizeGuess("Süßé Crème!"), "süßécrème");
   assertEquals(normalizeGuess("寿司"), "寿司");
 
+  // A leading article is optional on the guesser's side — "the lion king"
+  // (the stored answer) must match "Lion King" typed without the article,
+  // not just the exact "The Lion King". This was reported broken in play.
+  assertEquals(normalizeGuess("Lion King"), normalizeGuess("the lion king"));
+  assertEquals(normalizeGuess("Matrix"), normalizeGuess("the matrix"));
+  // The article strip must not fire mid-word or without a real trailing
+  // separator — "another"/"these" must survive untouched.
+  assertEquals(normalizeGuess("another"), "another");
+  assertEquals(normalizeGuess("these"), "these");
+
   // A guess of only punctuation is empty, and no seeded answer is empty, so
   // it can never be scored as correct.
   assertEquals(normalizeGuess("!!!???"), "");
@@ -186,14 +196,8 @@ const SEEDED_ANSWERS = [
   "star wars", "the matrix", "finding nemo", "harry potter", "shrek",
   "jurassic park", "ghostbusters", "toy story", "titanic", "batman",
   "up", "cars", "wall-e", "willy wonka", "kung fu panda",
-  "pizza", "burger", "sushi", "taco", "spaghetti",
-  "pancakes", "ice cream", "donut", "salad", "fries",
-  "hot dog", "popcorn", "croissant", "ramen", "waffle",
-  "sandwich", "cookie", "cheese", "bacon", "chocolate",
-  "phone", "key", "glasses", "clock", "backpack",
-  "umbrella", "chair", "flashlight", "books", "pencil",
-  "broom", "mirror", "hammer", "suitcase", "candle",
-  "guitar", "camera", "bicycle", "socks", "toothbrush",
+  // Food/Things' 40 single-emoji answers were removed from the seed
+  // migrations in step with 20260820180000_delete_single_emoji_words.sql.
 ];
 
 Deno.test("no seeded answer trips the profanity filter", () => {

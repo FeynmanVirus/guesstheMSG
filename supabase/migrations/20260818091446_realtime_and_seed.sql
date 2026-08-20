@@ -30,16 +30,10 @@ join (values
   ('Movies', '🕷️👨', 'spider-man', 'easy'),
   ('Movies', '⛄👸❄️', 'frozen', 'easy'),
   ('Movies', '🦈🌊', 'jaws', 'medium'),
-  ('Movies', '👽🚲🌕', 'e.t.', 'medium'),
-  ('Food', '🍕', 'pizza', 'easy'),
-  ('Food', '🍔', 'burger', 'easy'),
-  ('Food', '🍣', 'sushi', 'easy'),
-  ('Food', '🌮', 'taco', 'easy'),
-  ('Food', '🍝', 'spaghetti', 'medium'),
-  ('Things', '📱', 'phone', 'easy'),
-  ('Things', '🔑', 'key', 'easy'),
-  ('Things', '👓', 'glasses', 'easy'),
-  ('Things', '⏰', 'clock', 'easy'),
-  ('Things', '🎒', 'backpack', 'medium')
+  ('Movies', '👽🚲🌕', 'e.t.', 'medium')
+  -- Food/Things' original 5-each here were all single-emoji clues, removed
+  -- in 20260820180000_delete_single_emoji_words.sql along with the 30 more
+  -- added by 20260819040729_seed_more_words.sql — not re-added here, a
+  -- single emoji isn't really a "sequence" to decode.
 ) as w(category, emoji_sequence, answer, difficulty)
   on cat.name = w.category;

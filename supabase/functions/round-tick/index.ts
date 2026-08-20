@@ -169,7 +169,8 @@ Deno.serve(async (req) => {
     const { data: poolRows } = await admin
       .from("words")
       .select("id, emoji_sequence")
-      .in("category_id", categoryIds);
+      .in("category_id", categoryIds)
+      .eq("retired", false);
 
     const { data: usedRows } = await admin
       .from("rounds")

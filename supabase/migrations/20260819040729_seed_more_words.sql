@@ -24,38 +24,10 @@ join (values
   ('Movies', '🚗⚡🏁',    'cars',          'easy'),
   ('Movies', '🤖❤️🌱',    'wall-e',        'medium'),
   ('Movies', '🎩🍫🏭',    'willy wonka',   'medium'),
-  ('Movies', '🐼🥋',      'kung fu panda', 'easy'),
+  ('Movies', '🐼🥋',      'kung fu panda', 'easy')
 
-  ('Food',   '🥞',        'pancakes',      'easy'),
-  ('Food',   '🍦',        'ice cream',     'easy'),
-  ('Food',   '🍩',        'donut',         'easy'),
-  ('Food',   '🥗',        'salad',         'easy'),
-  ('Food',   '🍟',        'fries',         'easy'),
-  ('Food',   '🌭',        'hot dog',       'easy'),
-  ('Food',   '🍿',        'popcorn',       'easy'),
-  ('Food',   '🥐',        'croissant',     'medium'),
-  ('Food',   '🍜',        'ramen',         'easy'),
-  ('Food',   '🧇',        'waffle',        'easy'),
-  ('Food',   '🥪',        'sandwich',      'easy'),
-  ('Food',   '🍪',        'cookie',        'easy'),
-  ('Food',   '🧀',        'cheese',        'easy'),
-  ('Food',   '🥓',        'bacon',         'easy'),
-  ('Food',   '🍫',        'chocolate',     'easy'),
-
-  ('Things', '☂️',        'umbrella',      'easy'),
-  ('Things', '🪑',        'chair',         'easy'),
-  ('Things', '🔦',        'flashlight',    'medium'),
-  ('Things', '📚',        'books',         'easy'),
-  ('Things', '✏️',        'pencil',        'easy'),
-  ('Things', '🧹',        'broom',         'easy'),
-  ('Things', '🪞',        'mirror',        'easy'),
-  ('Things', '🔨',        'hammer',        'easy'),
-  ('Things', '🧳',        'suitcase',      'medium'),
-  ('Things', '🕯️',        'candle',        'easy'),
-  ('Things', '🎸',        'guitar',        'easy'),
-  ('Things', '📷',        'camera',        'easy'),
-  ('Things', '🚲',        'bicycle',       'easy'),
-  ('Things', '🧦',        'socks',         'easy'),
-  ('Things', '🪥',        'toothbrush',    'medium')
+  -- All 15 Food and all 15 Things rows that used to be here were
+  -- single-emoji clues — removed in
+  -- 20260820180000_delete_single_emoji_words.sql, not re-added here.
 ) as w(category, emoji_sequence, answer, difficulty) on w.category = c.name
 where c.is_custom = false and c.room_id is null;

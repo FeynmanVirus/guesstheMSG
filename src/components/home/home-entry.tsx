@@ -7,6 +7,7 @@ import { Squiggle } from "@/components/doodle/squiggle";
 import { IdentityFields } from "@/components/home/identity-fields";
 import { CreateRoomForm } from "@/components/home/create-room-form";
 import { JoinRoomForm } from "@/components/home/join-room-form";
+import { HowToPlayDialog } from "@/components/home/how-to-play-dialog";
 import { ensureAnonSession } from "@/lib/supabase/client";
 import {
   getSavedDisplayName,
@@ -133,7 +134,7 @@ export function HomeEntry({ initialCode }: HomeEntryProps) {
             )}
           </div>
 
-          <p className="text-center text-xs font-semibold text-ink-muted">how to play</p>
+          <HowToPlayDialog />
         </>
       ) : mode === "create" ? (
         <CreateRoomForm displayName={displayName.trim()} avatarId={avatarId} />

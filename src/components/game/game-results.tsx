@@ -28,6 +28,13 @@ type ConfettiFn = ((options?: Record<string, unknown>) => Promise<null> | null) 
   reset: () => void;
 };
 
+interface Award {
+  icon: string;
+  label: string;
+  playerId: string;
+  note: string;
+}
+
 // End of game (DESIGN.md §2.8, mockup frame 1g): the same wide 3-column
 // shell as the in-game screen — final standings | podium & awards | chat —
 // plus confetti for an outright winner.
@@ -39,6 +46,10 @@ export function GameResults({ roomCode, myPlayerId, restartSlot }: GameResultsPr
       sortForLeaderboard(Array.from(s.players.values()).filter((p) => p.status === "active")),
     ),
   );
+  // Unfiltered, unlike `players` above — an award winner (fastest/accuracy/
+  // Phoenix) may have left the room before the game ended; `players` alone
+  // has no row for them, so their name would be unresolvable.
+  const playersMap = useRoomStore((s) => s.players);
   const room = useRoomStore((s) => s.room);
 
   const winner = players[0] ?? null;
@@ -143,24 +154,39 @@ export function GameResults({ roomCode, myPlayerId, restartSlot }: GameResultsPr
 
   const totalRounds = stats?.rounds.length ?? 0;
 
-  const podiumEntries: PodiumEntry[] = players.slice(0, 3).map((p) => {
-    let award: string | undefined;
-    if (stats?.fastestAverage?.playerId === p.id) award = "⚡ Fastest guesser";
-    else if (stats?.highestAccuracy?.playerId === p.id && stats.highestAccuracy.attempts > 0) {
-      award = "🎯 Highest accuracy";
-    } else if (stats?.phoenix?.playerId === p.id) award = "🔥 The Phoenix";
+  // Placement-only now — award badges used to be attached to a podium slot,
+  // but that meant a category whose winner wasn't top-3 (common: accuracy
+  // and Phoenix winners often aren't the highest scorer) never showed up
+  // anywhere, and a player who swept multiple categories only ever showed
+  // the first-checked one. See the `awards` list below instead, which isn't
+  // gated on podium placement and can show every category independently.
+  const podiumEntries: PodiumEntry[] = players.slice(0, 3).map((p) => ({
+    playerId: p.id,
+    avatarId: p.avatarId,
+    displayName: p.displayName,
+    points: p.score,
+  }));
 
-    let note: string | undefined;
-    if (award?.includes("Fastest") && stats?.fastestAverage) {
-      note = `best ${stats.fastestAverage.bestSeconds}s · avg ${stats.fastestAverage.seconds}s`;
-    } else if (award?.includes("accuracy") && stats?.highestAccuracy) {
-      note = `${stats.highestAccuracy.correct} of ${stats.highestAccuracy.attempts} guesses · ${stats.highestAccuracy.pct}%`;
-    } else if (award?.includes("Phoenix") && stats?.phoenix) {
-      note = `last at #${stats.phoenix.fromRank} → #${stats.phoenix.toRank}`;
-    }
-
-    return { playerId: p.id, avatarId: p.avatarId, displayName: p.displayName, points: p.score, award, note };
-  });
+  const awards: Award[] = [
+    stats?.fastestAverage && {
+      icon: "⚡",
+      label: "Fastest guesser",
+      playerId: stats.fastestAverage.playerId,
+      note: `best ${stats.fastestAverage.bestSeconds}s · avg ${stats.fastestAverage.seconds}s`,
+    },
+    stats?.highestAccuracy && {
+      icon: "🎯",
+      label: "Highest accuracy",
+      playerId: stats.highestAccuracy.playerId,
+      note: `${stats.highestAccuracy.correct} of ${stats.highestAccuracy.attempts} guesses · ${stats.highestAccuracy.pct}%`,
+    },
+    stats?.phoenix && {
+      icon: "🔥",
+      label: "The Phoenix",
+      playerId: stats.phoenix.playerId,
+      note: `#${stats.phoenix.fromRank} → #${stats.phoenix.toRank}`,
+    },
+  ].filter((award): award is Award => Boolean(award));
 
   return (
     <div className="mx-auto w-full max-w-[1280px] space-y-4">
@@ -180,10 +206,13 @@ export function GameResults({ roomCode, myPlayerId, restartSlot }: GameResultsPr
         </div>
       </div>
 
+      {/* Mobile order (below lg) is explicit on all three — see the
+          identical comment in room-game.tsx's grid, same reasoning applies
+          to a long final-standings list. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[270px_1fr_300px] lg:gap-[18px]">
         {/* lg:self-start: don't stretch to match the middle/chat columns'
             height — stay sized to however many players there are. */}
-        <div className="doodle-panel space-y-2.5 p-4 lg:order-1 lg:self-start">
+        <div className="doodle-panel order-2 space-y-2.5 p-4 lg:order-1 lg:self-start">
           <p className="font-heading text-xl font-bold text-ink">Final standings</p>
           <div className="h-0 border-t-2 border-dashed border-hairline" />
           <ul className="space-y-2">
@@ -234,7 +263,7 @@ export function GameResults({ roomCode, myPlayerId, restartSlot }: GameResultsPr
           )}
         </div>
 
-        <div className="doodle-panel flex min-h-[420px] flex-col items-center gap-2 p-5 text-center lg:order-2 lg:min-h-[560px]">
+        <div className="doodle-panel order-1 flex min-h-[420px] flex-col items-center gap-2 p-5 text-center lg:order-2 lg:min-h-[560px]">
           <p className="text-xs font-bold tracking-[0.16em] text-ink-muted uppercase">
             {totalRounds} rounds · final
           </p>
@@ -251,15 +280,34 @@ export function GameResults({ roomCode, myPlayerId, restartSlot }: GameResultsPr
             )}
           </div>
 
-          <div className="flex w-full items-center gap-3 border-t-2 border-dashed border-hairline pt-3.5">
-            <button
-              type="button"
-              onClick={handleShare}
-              className="ml-auto flex items-center gap-1.5 rounded-full border-2 border-ink bg-paper px-4 py-2 text-sm font-bold text-ink"
-            >
-              <Share2 className="size-3.5" aria-hidden />
-              {shared ? "link copied" : "share results"}
-            </button>
+          <div className="w-full space-y-2.5 border-t-2 border-dashed border-hairline pt-3.5">
+            {/* Independent of podium placement — see the `awards` comment
+                above. Resolved against the unfiltered playersMap so a
+                winner who left the room mid-game still shows a name. */}
+            {awards.length > 0 && (
+              <ul className="space-y-1.5 text-left">
+                {awards.map((award) => (
+                  <li key={award.label} className="flex items-center gap-2 text-sm text-ink">
+                    <span aria-hidden>{award.icon}</span>
+                    <span className="font-bold">{award.label}</span>
+                    <span className="min-w-0 truncate text-ink-muted">
+                      {playersMap.get(award.playerId)?.displayName ?? "Someone"} · {award.note}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="flex w-full items-center gap-3">
+              <button
+                type="button"
+                onClick={handleShare}
+                className="ml-auto flex items-center gap-1.5 rounded-full border-2 border-ink bg-paper px-4 py-2 text-sm font-bold text-ink"
+              >
+                <Share2 className="size-3.5" aria-hidden />
+                {shared ? "link copied" : "share results"}
+              </button>
+            </div>
           </div>
 
           {/* The rematch form (or "waiting for host") used to render as its
@@ -273,8 +321,14 @@ export function GameResults({ roomCode, myPlayerId, restartSlot }: GameResultsPr
 
         {/* lg:relative: containing block for ChatPanel's lg:absolute
             inset-0 (see chat-panel.tsx for why it isn't lg:h-full). */}
-        <div className="lg:order-3 lg:relative">
-          <ChatPanel roomCode={roomCode} live={false} isSpectator={false} myPlayerId={myPlayerId} />
+        <div className="order-3 lg:order-3 lg:relative">
+          <ChatPanel
+            roomCode={roomCode}
+            live={false}
+            isSpectator={false}
+            myPlayerId={myPlayerId}
+            roundId={null}
+          />
         </div>
       </div>
     </div>

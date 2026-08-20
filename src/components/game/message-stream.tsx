@@ -71,11 +71,11 @@ export function MessageStream({ myPlayerId }: MessageStreamProps) {
                 )}
                 <span
                   className={`font-extrabold ${
-                    winners && !message.pending ? "text-sage-ink" : "text-ink-muted"
+                    winners && !message.pending ? "text-sage-ink" : "text-ink"
                   }`}
                 >
                   {name}
-                  {isSelf ? " (you)" : ""}
+                  {isSelf ? " (you)" : ""}:
                 </span>{" "}
                 <span className="break-words">{message.body}</span>
               </li>

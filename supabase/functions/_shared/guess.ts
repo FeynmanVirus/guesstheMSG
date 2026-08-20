@@ -24,11 +24,26 @@
  * — and it's strictly more forgiving, which is the right bias for a party
  * game where a near-miss on spacing shouldn't cost a round.
  *
+ * A leading article ("the"/"a"/"an") is stripped too, before separators are
+ * removed — this has to happen first, since once "the lion king" collapses
+ * to "thelionking" there's no word boundary left to anchor a strip against.
+ * Applied identically to both sides, so the *answer* "the lion king" also
+ * loses its "the" and still matches a guess of "Lion King" as well as "The
+ * Lion King". Anchored to the very start only (never mid-string), and the
+ * trailing boundary is any non-letter/digit character, not just whitespace
+ * — "The-Lion-King" separates with hyphens, not spaces, and still needs to
+ * strip. Requiring *some* boundary (not just "starts with those letters")
+ * is what keeps this from misfiring on "another" or "these".
+ *
  * Uses Unicode property escapes so non-Latin answers keep their characters
  * instead of normalizing to an empty string (which would make every wrong
  * guess "correct" against them). */
 export function normalizeGuess(value: string): string {
-  return value.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/^\s*(the|an?)[^\p{L}\p{N}]+/u, "")
+    .replace(/[^\p{L}\p{N}]/gu, "");
 }
 
 /** 5-second grace window: any correct guess landing at or before this still

@@ -11,10 +11,6 @@ export interface PodiumEntry {
   avatarId: string;
   displayName: string;
   points: number;
-  /** Short badge under the name, e.g. "⚡ Fastest guesser". */
-  award?: string;
-  /** One line under the award, e.g. "best 2.4s · avg 6.1s". */
-  note?: string;
 }
 
 const ACCENT_BG: Record<string, string> = {
@@ -49,14 +45,6 @@ export function Podium({ entries, className }: PodiumProps) {
             <p className="max-w-full truncate font-heading text-lg font-bold text-ink">
               {entry.displayName}
             </p>
-            {entry.award && (
-              <span className="rounded-full border-2 border-ink bg-paper px-2.5 py-0.5 text-[0.65rem] font-bold whitespace-nowrap text-ink">
-                {entry.award}
-              </span>
-            )}
-            {entry.note && (
-              <p className="text-center text-[0.65rem] font-semibold text-ink-muted">{entry.note}</p>
-            )}
             <div
               className={cn(
                 "flex w-full flex-col items-center gap-0.5 rounded-t-xl border-2 border-b-0 border-ink pt-2",

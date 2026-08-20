@@ -37,8 +37,10 @@ export interface GameStats {
    * points" (that's already the leaderboard winner), or this would just be
    * a redundant callout for the same player. */
   mvp: { playerId: string; roundsWon: number } | null;
-  /** Correct guesses / total guesses submitted, over players who guessed at
-   * least once (right or wrong) — someone who never guessed isn't
+  /** Correct guesses / total guesses submitted, over players who've made at
+   * least MIN_ACCURACY_ATTEMPTS attempts (right or wrong) — without a real
+   * floor, a single lucky 1-of-1 guess beats a real 9-of-11 leader on raw
+   * percentage. Someone below the floor (or who never guessed) isn't
    * rankable here, since this function never sees the full player roster,
    * only who appears in guesses. */
   highestAccuracy: { playerId: string; correct: number; attempts: number; pct: number } | null;
@@ -71,6 +73,11 @@ interface Accumulator {
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
+
+// Below this many attempts, a raw percentage is noise (a single lucky guess
+// is a "100%" that shouldn't beat a real leader) — see highestAccuracy's doc
+// comment on GameStats.
+const MIN_ACCURACY_ATTEMPTS = 3;
 
 /** Tie-break order shared by the headline stats: higher points first, then
  * lower player id — arbitrary but deterministic, so a callout never
@@ -187,9 +194,11 @@ export function computeStats(rounds: StatsRound[]): GameStats {
       }
     }
 
-    const pct = round1((entry.correctCount / entry.attempts) * 100);
-    if (!highestAccuracy || betterTiebreak(pct, playerId, highestAccuracy.pct, highestAccuracy.playerId)) {
-      highestAccuracy = { playerId, correct: entry.correctCount, attempts: entry.attempts, pct };
+    if (entry.attempts >= MIN_ACCURACY_ATTEMPTS) {
+      const pct = round1((entry.correctCount / entry.attempts) * 100);
+      if (!highestAccuracy || betterTiebreak(pct, playerId, highestAccuracy.pct, highestAccuracy.playerId)) {
+        highestAccuracy = { playerId, correct: entry.correctCount, attempts: entry.attempts, pct };
+      }
     }
   }
 
