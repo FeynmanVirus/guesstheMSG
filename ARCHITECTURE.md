@@ -1,6 +1,6 @@
-# ARCHITECTURE.md — GuessTheMSG
+# ARCHITECTURE.md — Guessmoji
 
-This is the living technical source of truth for GuessTheMSG (per `CLAUDE.md`'s Workflow section). Update it as schema/architecture decisions are made or changed — don't let it drift from what's actually built. Corresponding migrations live under `supabase/migrations/`, applied via the Supabase MCP server.
+This is the living technical source of truth for Guessmoji (per `CLAUDE.md`'s Workflow section) — the app shipped as "GuessTheMSG" and was renamed in a visual redesign; see `CLAUDE.md`'s note. Update it as schema/architecture decisions are made or changed — don't let it drift from what's actually built. Corresponding migrations live under `supabase/migrations/`, applied via the Supabase MCP server.
 
 **Project status as of this doc:** Supabase project `solqgbkmfyaukdwwdxxm` connected via MCP. Phase 1 (schema + RLS), Phase 2 (Home page, `create-room`/`join-room`, `/room/[code]` stub), Phase 3 (live lobby — Presence, `promote-host`, `start-game`), and Phase 4 (the round loop — `round-tick`, `submit-guess`, live timer, scoring, two-tier chat, recap, results) are all applied and verified — see §4/§5/§7/§11/§14. A follow-up pass since Phase 4 added: a second RLS gap fixed on `guesses.guess_text` (§4), an optimistic client-side echo plus `submit-guess` call parallelization for message latency (§5/§14), and `restart-room` (§9/§14) so the results screen is no longer a terminal state. Anonymous auth is on. Verification for each phase combined `curl`/SQL (deterministic authorization cases, real RLS impersonation) with a real two-player browser session — Phase 4's included a genuine live game played to completion across three rounds, a mid-round refresh/reconnect, and a direct REST reproduction of a pre-existing RLS bug this phase's testing surfaced and fixed (§4). `kick-player`/`cleanup-rooms` (§14) are not yet written.
 
@@ -8,11 +8,11 @@ This is the living technical source of truth for GuessTheMSG (per `CLAUDE.md`'s 
 
 - **Frontend:** Next.js 16 (App Router, TypeScript), server components by default, `'use client'` only where interactivity/state requires it.
 - **Styling/UI:** Tailwind CSS + shadcn/ui.
-- **Animation:** Framer Motion (entrances, leaderboard reordering), canvas-confetti (win moment), rough-notation (sparse hand-drawn accents).
+- **Animation:** Framer Motion (entrances, leaderboard reordering), canvas-confetti (win moment). `rough-notation` was planned for sparse hand-drawn accents but never adopted — dropped, not deferred (DESIGN.md §3).
 - **Backend:** Supabase — Postgres (schema + RLS), Realtime (Broadcast + Presence), Auth (anonymous), Edge Functions (Deno) for all trusted logic.
 - **Client state:** Zustand for room/game state — no heavier state library.
 - **Hosting:** Vercel (frontend) + Supabase Cloud (backend).
-- **Avatars:** DiceBear `open-peeps`/`notionists`, ~12 curated seeds pre-rendered to static SVGs at build time.
+- **Avatars:** emoji on a colored circle, 12 curated ids (`supabase/functions/_shared/avatars.ts`) — no image asset, no runtime API call. (Originally DiceBear `open-peeps` SVGs; replaced in the Guessmoji redesign — see DESIGN.md §3.)
 
 ## 2. Data model
 

@@ -1,21 +1,23 @@
 @AGENTS.md
-# GuessTheMSG — CLAUDE.md
+# Guessmoji — CLAUDE.md
 
 This file is read automatically at the start of every Claude Code session in this repo. It is the project's standing brief — treat every rule here as binding unless I explicitly say otherwise in a prompt. If `DESIGN.md` or `ARCHITECTURE.md` don't exist yet, your first job is to help create them (see Workflow below) before writing feature code.
 
+The app shipped as "GuessTheMSG" and was renamed **Guessmoji** in a visual redesign against a Claude Design mockup set — the repo directory and some code/history still say GuessTheMSG, that's fine. The "Design & visual style" section below is this rename's seed brief; `DESIGN.md` §3 is the current, canonical version and wins if the two ever diverge (see that file's own note).
+
 ## What this is
 
-GuessTheMSG is a browser-based party game. Players join a room, see an emoji sequence, and race to type the correct answer in a shared chat/guess box. Faster correct guesses score more points. A live leaderboard tracks rank. After N rounds the game ends and shows results; the host can reconfigure and restart.
+Guessmoji is a browser-based party game. Players join a room, see an emoji sequence, and race to type the correct answer in a shared chat/guess box. Faster correct guesses score more points. A live leaderboard tracks rank. After N rounds the game ends and shows results; the host can reconfigure and restart.
 
 ## Tech stack
 
 - Next.js 16 (App Router, TypeScript) — server components by default, `'use client'` only where interactivity/state is required.
 - Tailwind CSS + shadcn/ui for components.
-- Framer Motion for animation, canvas-confetti for the win moment, rough-notation for hand-drawn annotation accents.
+- Framer Motion for animation, canvas-confetti for the win moment.
 - Supabase: Postgres (schema + RLS), Realtime (Broadcast for chat/guesses/round events, Presence for who's online), Auth (anonymous), Edge Functions (Deno) for all trusted game logic.
 - Zustand for client-side room/game state; avoid pulling in a heavier state library.
 - Hosting: Vercel (frontend) + Supabase Cloud (backend).
-- Avatars: DiceBear `open-peeps` or `notionists` style (hand-drawn doodle people) — pre-generate a curated set of ~12 seeds as static SVGs at build time; don't hit the DiceBear API at runtime.
+- Avatars: emoji on a colored circle, a curated set of 12 (`supabase/functions/_shared/avatars.ts`) — no image asset, no runtime API call. (Originally DiceBear `open-peeps` SVGs; replaced in the Guessmoji redesign.)
 
 ## Non-negotiable rules
 
@@ -57,6 +59,8 @@ Beyond the core loop (create/join room → lobby → rounds → leaderboard → 
 Treat analytics (basic event counts) and light/dark theme as good-to-have if time allows within a phase, but don't let them block the phases above.
 
 ## Design & visual style
+
+**This section is the original seed brief and is historical — `DESIGN.md` §3 is the current, canonical version and wins if the two diverge.** Kept here for the parts that are still accurate (palette, accessibility guardrail); see DESIGN.md for the Guessmoji-redesign changes (Comic Neue instead of Caveat, emoji avatars instead of DiceBear, no per-card rotation, a wide 3-column shell on the round-loop/results screens).
 
 The brief: **simple, artistic, doodle-y, light, and calm — not much going on.** Think hand-drawn party invite, not a SaaS dashboard. Every screen should have one clear focal point; resist adding decorative elements "because there's space."
 
