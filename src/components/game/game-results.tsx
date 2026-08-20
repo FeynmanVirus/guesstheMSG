@@ -17,8 +17,8 @@ interface GameResultsProps {
   roomCode: string;
   myPlayerId: string | null;
   /** RestartRoomForm for the host, WaitingForHost for everyone else —
-   * room-lobby.tsx owns that branch, this just renders whatever it hands in
-   * below the standings. */
+   * room-lobby.tsx owns that branch, this just embeds whatever it hands in
+   * at the bottom of the centre column, below the podium/share row. */
   restartSlot: React.ReactNode;
 }
 
@@ -181,7 +181,9 @@ export function GameResults({ roomCode, myPlayerId, restartSlot }: GameResultsPr
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[270px_1fr_300px] lg:gap-[18px]">
-        <div className="doodle-panel space-y-2.5 p-4 lg:order-1">
+        {/* lg:self-start: don't stretch to match the middle/chat columns'
+            height — stay sized to however many players there are. */}
+        <div className="doodle-panel space-y-2.5 p-4 lg:order-1 lg:self-start">
           <p className="font-heading text-xl font-bold text-ink">Final standings</p>
           <div className="h-0 border-t-2 border-dashed border-hairline" />
           <ul className="space-y-2">
@@ -259,14 +261,22 @@ export function GameResults({ roomCode, myPlayerId, restartSlot }: GameResultsPr
               {shared ? "link copied" : "share results"}
             </button>
           </div>
+
+          {/* The rematch form (or "waiting for host") used to render as its
+              own full-width section below the whole grid — on top of this
+              column's own min-height floor, that left a lot of empty space
+              here and then a lot more page to scroll past below. Embedding
+              it here instead fills that space and keeps everything about
+              "what happens next" in one place. */}
+          <div className="w-full border-t-2 border-dashed border-hairline pt-3.5">{restartSlot}</div>
         </div>
 
-        <div className="lg:order-3">
-          <ChatPanel roomCode={roomCode} disabled={false} isSpectator={false} myPlayerId={myPlayerId} />
+        {/* lg:relative: containing block for ChatPanel's lg:absolute
+            inset-0 (see chat-panel.tsx for why it isn't lg:h-full). */}
+        <div className="lg:order-3 lg:relative">
+          <ChatPanel roomCode={roomCode} live={false} isSpectator={false} myPlayerId={myPlayerId} />
         </div>
       </div>
-
-      {restartSlot}
     </div>
   );
 }

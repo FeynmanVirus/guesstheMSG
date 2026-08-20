@@ -107,10 +107,10 @@ export function RestartRoomForm({ roomCode }: RestartRoomFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-3">
       <FormError message={error} />
 
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <Label className="text-xs font-bold tracking-[0.14em] text-ink-muted uppercase">
           Category
         </Label>
@@ -131,7 +131,7 @@ export function RestartRoomForm({ roomCode }: RestartRoomFormProps) {
         {fieldErrors.categoryId && <p className="text-sm text-coral">{fieldErrors.categoryId}</p>}
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <div className="flex items-baseline justify-between">
           <Label
             htmlFor="restart-word-draft"
@@ -156,7 +156,7 @@ export function RestartRoomForm({ roomCode }: RestartRoomFormProps) {
               }
             }}
             placeholder="🦁👑: the lion king"
-            className="h-11 min-w-0 flex-1 bg-transparent font-bold text-ink outline-none placeholder:font-semibold placeholder:text-placeholder"
+            className="h-10 min-w-0 flex-1 bg-transparent font-bold text-ink outline-none placeholder:font-semibold placeholder:text-placeholder"
           />
           <button
             type="button"
@@ -168,11 +168,11 @@ export function RestartRoomForm({ roomCode }: RestartRoomFormProps) {
         </div>
 
         {customWordsPreview.pairs.length > 0 && (
-          <div className="doodle-dashed flex flex-wrap gap-2 p-3.5">
+          <div className="doodle-dashed flex max-h-24 flex-wrap gap-2 overflow-y-auto p-2.5">
             {customWordsPreview.pairs.map((pair, i) => (
               <span
                 key={`${pair.answer}-${i}`}
-                className="flex items-center gap-1.5 rounded-full border-2 border-ink bg-paper px-3 py-1.5 text-sm font-semibold text-ink"
+                className="flex items-center gap-1.5 rounded-full border-2 border-ink bg-paper px-3 py-1 text-sm font-semibold text-ink"
               >
                 {pair.answer}
                 <button
@@ -188,9 +188,9 @@ export function RestartRoomForm({ roomCode }: RestartRoomFormProps) {
           </div>
         )}
 
-        <p className="text-sm text-ink-muted">
-          Replaces the last game&apos;s custom words. Leave blank to use category words only.
-        </p>
+        {/* Shortened for the compact embedded context (mockup frame 1h's
+            version has room for the full sentence) — same info, one line. */}
+        <p className="text-xs text-ink-muted">Blank keeps category words only.</p>
         {customWordsPreview.errors.length > 0 && (
           <p className="text-sm text-coral">
             {customWordsPreview.errors.length} problem

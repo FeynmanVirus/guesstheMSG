@@ -53,7 +53,9 @@ export function RoomGame({ roomCode, myPlayerId, isSpectator }: RoomGameProps) {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[270px_1fr_300px] lg:gap-[18px]">
-        <div className="lg:order-1">
+        {/* lg:self-start: don't stretch to match the middle/chat columns'
+            height — stay sized to however many players there are. */}
+        <div className="lg:order-1 lg:self-start">
           <Leaderboard myPlayerId={myPlayerId} />
         </div>
 
@@ -75,14 +77,10 @@ export function RoomGame({ roomCode, myPlayerId, isSpectator }: RoomGameProps) {
           </AnimatePresence>
         </div>
 
-        <div className="lg:order-3">
-          <ChatPanel
-            key={round.id}
-            roomCode={roomCode}
-            disabled={!live}
-            isSpectator={isSpectator}
-            myPlayerId={myPlayerId}
-          />
+        {/* lg:relative: containing block for ChatPanel's lg:absolute
+            inset-0 (see chat-panel.tsx for why it isn't lg:h-full). */}
+        <div className="lg:order-3 lg:relative">
+          <ChatPanel key={round.id} roomCode={roomCode} live={live} isSpectator={isSpectator} myPlayerId={myPlayerId} />
         </div>
       </div>
     </div>

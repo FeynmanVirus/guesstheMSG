@@ -8,7 +8,12 @@ import { useRoomStore, LOCAL_ECHO_PREFIX } from "@/lib/room/store";
 
 interface GuessInputProps {
   roomCode: string;
-  disabled: boolean;
+  /** Whether the current round is still live (not the recap/results state).
+   * Affects only the placeholder copy — submit-guess already accepts a
+   * message while not live and posts it as ordinary chat rather than
+   * evaluating it as a guess, so there's no correctness reason to ever
+   * disable the input while in a room. */
+  live: boolean;
   isSpectator: boolean;
   /** For the optimistic echo's playerId. Null only in the impossible
    * pre-bootstrap case, where the echo is simply skipped. */
@@ -63,7 +68,7 @@ const PENDING_TIMEOUT_MS = 4000;
 // stuck message from *looking* different too — it settles out of the
 // pending state on a timer so it reads as an ordinary sent message instead
 // of a spinner that never resolves (which would itself be a tell).
-export function GuessInput({ roomCode, disabled, isSpectator, myPlayerId }: GuessInputProps) {
+export function GuessInput({ roomCode, live, isSpectator, myPlayerId }: GuessInputProps) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [solved, setSolved] = useState(false);
@@ -131,7 +136,9 @@ export function GuessInput({ roomCode, disabled, isSpectator, myPlayerId }: Gues
     ? "Spectating — chat only"
     : solved
       ? "You're in the winners' chat"
-      : "type your guess…";
+      : live
+        ? "type your guess…"
+        : "chat while you wait…";
 
   return (
     <form onSubmit={handleSubmit} className="border-t-2 border-dashed border-hairline p-3">
@@ -141,18 +148,18 @@ export function GuessInput({ roomCode, disabled, isSpectator, myPlayerId }: Gues
           onChange={(e) => setText(e.target.value)}
           placeholder={placeholder}
           maxLength={200}
-          // Never gated on send-in-flight — typing (and sending) the next
-          // message while the previous one is still in flight is the whole
-          // point of the optimistic echo, and each send has its own echoId.
-          disabled={disabled}
+          // Never disabled — typing (and sending) the next message while a
+          // previous one is still in flight is the whole point of the
+          // optimistic echo, and submit-guess already accepts a message
+          // while the round isn't live and posts it as ordinary chat.
           aria-label={solved ? "Message the winners' chat" : "Your guess or message"}
-          className={`h-11 min-w-0 flex-1 rounded-full border-[2.5px] px-4 font-bold text-ink outline-none transition-colors placeholder:font-semibold placeholder:text-placeholder disabled:opacity-60 ${
+          className={`h-11 min-w-0 flex-1 rounded-full border-[2.5px] px-4 font-bold text-ink outline-none transition-colors placeholder:font-semibold placeholder:text-placeholder ${
             flash ? "border-sage bg-sage/40" : solved ? "border-sage bg-sage/15" : "border-ink bg-surface"
           }`}
         />
         <button
           type="submit"
-          disabled={disabled || text.trim().length === 0}
+          disabled={text.trim().length === 0}
           aria-label="Send"
           className="doodle-btn flex size-9 shrink-0 items-center justify-center bg-lavender text-ink disabled:opacity-50"
         >

@@ -117,6 +117,15 @@
   h3 {
     @apply font-heading font-semibold;
   }
+  /* Browser UA stylesheets only give <a href> a pointer cursor by default —
+     <button> (and custom role="radio"/"button" tiles, e.g. the avatar
+     picker) get the plain arrow otherwise. One rule here instead of adding
+     cursor-pointer to every button-ish component individually. */
+  button:not(:disabled),
+  [role="radio"]:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 /* Doodle motifs — DESIGN.md §3. Sparse, hand-placed feel: no gradients, no

@@ -198,7 +198,12 @@ export function CreateRoomForm({ displayName, avatarId }: CreateRoomFormProps) {
         {fieldErrors.categoryId && <p className="text-sm text-coral">{fieldErrors.categoryId}</p>}
       </div>
 
-      <div className="flex gap-3.5">
+      {/* flex-col until sm: on a narrow phone, 3 time chips at their default
+          padding don't fit in a ~40% share of the card next to the rounds
+          stepper — they refuse to shrink below their content width and push
+          "90s" outside the card. Full-width rows below sm: fixes that; side
+          by side from sm: up there's plenty of room either way. */}
+      <div className="flex flex-col gap-3.5 sm:flex-row">
         <div className="flex-1 space-y-2">
           <Label className="text-xs font-bold tracking-[0.14em] text-ink-muted uppercase">
             Rounds

@@ -39,7 +39,7 @@ export function IdentityFields({
         <div className="doodle-panel flex items-center gap-3 px-4 py-3">
           <DialogTrigger
             aria-label="Choose your avatar"
-            className="shrink-0 cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-sky"
+            className="shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-sky"
           >
             <Avatar avatarId={avatarId} className="size-[46px] text-2xl" />
           </DialogTrigger>
@@ -54,7 +54,7 @@ export function IdentityFields({
             className="h-auto flex-1 border-0 bg-transparent p-0 font-heading text-xl font-extrabold text-ink shadow-none outline-none focus-visible:ring-0"
           />
 
-          <DialogTrigger className="shrink-0 cursor-pointer rounded-full border-[2.5px] border-ink bg-sun px-3.5 py-1.5 text-xs font-bold text-ink">
+          <DialogTrigger className="shrink-0 rounded-full border-[2.5px] border-ink bg-sun px-3.5 py-1.5 text-xs font-bold text-ink">
             ✏️ avatar
           </DialogTrigger>
         </div>

@@ -134,7 +134,8 @@ export function RoomLobby({ code }: RoomLobbyProps) {
   if (room.status === "ended") {
     // GameResults owns the same wide shell RoomGame does — the host's
     // rematch form (or the waiting notice) is its one caller-supplied slot,
-    // rendered below the standings/podium/chat grid.
+    // embedded at the bottom of the centre column (no width wrapper needed
+    // here, that column is already narrower than the old max-w-2xl was).
     return (
       <div className="flex flex-1 flex-col items-center px-4 py-6 sm:px-6 sm:py-8">
         <GameResults
@@ -142,9 +143,7 @@ export function RoomLobby({ code }: RoomLobbyProps) {
           myPlayerId={myPlayerId}
           restartSlot={
             isHost ? (
-              <div className="doodle-panel mx-auto w-full max-w-2xl p-5">
-                <RestartRoomForm roomCode={code} />
-              </div>
+              <RestartRoomForm roomCode={code} />
             ) : (
               <div className="text-center">
                 <WaitingForHost

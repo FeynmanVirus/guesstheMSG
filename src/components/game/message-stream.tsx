@@ -17,14 +17,19 @@ interface MessageStreamProps {
 export function MessageStream({ myPlayerId }: MessageStreamProps) {
   const messages = useRoomStore((s) => s.messages);
   const players = useRoomStore((s) => s.players);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Scroll this container directly rather than scrollIntoView on a bottom
+  // sentinel: now that the panel has a real bounded height (chat-panel.tsx),
+  // scrollIntoView would walk every scrollable ancestor including the page
+  // itself, so a new message could nudge the whole results page.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "nearest" });
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages.length]);
 
   return (
-    <div className="flex-1 overflow-y-auto p-3.5" aria-live="polite">
+    <div ref={scrollRef} className="flex-1 overflow-y-auto p-3.5" aria-live="polite">
       {messages.length === 0 ? (
         <p className="flex h-full items-center justify-center text-center text-sm text-ink-muted">
           No messages yet — start guessing.
@@ -78,7 +83,6 @@ export function MessageStream({ myPlayerId }: MessageStreamProps) {
           })}
         </ul>
       )}
-      <div ref={bottomRef} />
     </div>
   );
 }
