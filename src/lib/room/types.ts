@@ -16,10 +16,16 @@ export interface RoomPlayer {
 export interface RoomInfo {
   id: string;
   status: RoomStatus;
+  name: string;
   /** rooms.settings.rounds. Readable by members (settings holds no secret —
    * the answer lives in `words`, which has no client policy at all), and
    * needed for the "Round N of M" label. */
   totalRounds: number;
+  /** rooms.settings.seconds_per_round — the lobby header's settings summary. */
+  secondsPerRound: number;
+  /** rooms.categories.name, joined through category_id — null means the
+   * "mixed" sentinel (rooms.category_id is null), not a missing category. */
+  categoryName: string | null;
 }
 
 /** The active (or just-finished) round. `revealedAt`/`revealedAnswer` are

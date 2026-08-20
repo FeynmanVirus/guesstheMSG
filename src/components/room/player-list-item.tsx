@@ -9,24 +9,20 @@ interface PlayerListItemProps {
   connected: boolean;
 }
 
+// Card layout (mockup frame 1d): avatar over name over one status pill.
 export function PlayerListItem({ player, isSelf, connected }: PlayerListItemProps) {
   return (
     <li
-      className={`flex items-center gap-3 rounded-xl border-2 border-ink/15 bg-surface px-3 py-2 transition-opacity ${
+      className={`doodle-panel flex flex-col items-center gap-1.5 p-3.5 text-center transition-opacity ${
         connected ? "" : "opacity-60"
       }`}
     >
-      <Avatar avatarId={player.avatarId} className="size-10 text-xl" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-medium text-ink">
-          {player.displayName}
-          {isSelf && <span className="text-ink-muted"> (you)</span>}
-        </p>
-        <div className="flex items-center gap-3">
-          {player.isHost && <HostBadge />}
-          <ConnectionIndicator connected={connected} />
-        </div>
-      </div>
+      <Avatar avatarId={player.avatarId} className="size-[52px] text-2xl" />
+      <p className="w-full truncate font-heading text-base font-bold text-ink">
+        {player.displayName}
+        {isSelf && <span className="text-ink-muted"> (you)</span>}
+      </p>
+      {player.isHost ? <HostBadge /> : <ConnectionIndicator connected={connected} />}
     </li>
   );
 }

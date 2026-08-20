@@ -135,7 +135,8 @@ export function useRoomChannel(code: string, roomId: string | null, myPlayerId: 
           const row = payload.new as {
             id: string;
             status: RoomStatus;
-            settings: { rounds?: number } | null;
+            name: string;
+            settings: { rounds?: number; seconds_per_round?: number } | null;
           };
 
           // A restart-room (§9) reuses the room, so without this the
@@ -146,10 +147,19 @@ export function useRoomChannel(code: string, roomId: string | null, myPlayerId: 
             useRoomStore.getState().setRound(null);
           }
 
+          // Postgres Changes payloads don't carry a joined categories.name —
+          // category_id itself never changes after room creation, so the
+          // category label already in the store (set by the catch-up read
+          // below) stays correct; only the fields this event actually
+          // carries get updated.
+          const prevRoom = useRoomStore.getState().room;
           useRoomStore.getState().setRoom({
             id: row.id,
             status: row.status,
-            totalRounds: row.settings?.rounds ?? useRoomStore.getState().room?.totalRounds ?? 0,
+            name: row.name,
+            totalRounds: row.settings?.rounds ?? prevRoom?.totalRounds ?? 0,
+            secondsPerRound: row.settings?.seconds_per_round ?? prevRoom?.secondsPerRound ?? 0,
+            categoryName: prevRoom?.categoryName ?? null,
           });
         },
       )
@@ -204,7 +214,17 @@ export function useRoomChannel(code: string, roomId: string | null, myPlayerId: 
           const [{ data: playerRows }, { data: roomRow }, { data: roundRows }, { data: chatRows }] =
             await Promise.all([
               supabase.from("players").select(PLAYER_COLUMNS).eq("room_id", roomId),
-              supabase.from("rooms").select("id, status, settings").eq("id", roomId).single(),
+              // categories!rooms_category_id_fkey, not the bare relation
+              // name: rooms and categories reference each other two ways
+              // (rooms.category_id -> categories.id, categories.room_id ->
+              // rooms.id for a room's own custom category), so PostgREST
+              // can't infer which embed is meant — an ambiguous embed 300s
+              // instead of erroring, which read as an infinite lobby hang.
+              supabase
+                .from("rooms")
+                .select("id, status, name, settings, categories!rooms_category_id_fkey(name)")
+                .eq("id", roomId)
+                .single(),
               supabase
                 .from("rounds")
                 .select(ROUND_COLUMNS)
@@ -224,11 +244,21 @@ export function useRoomChannel(code: string, roomId: string | null, myPlayerId: 
             useRoomStore.getState().mergePlayers((playerRows as PlayerRow[]).map(mapPlayer));
           }
           if (roomRow) {
-            const settings = roomRow.settings as { rounds?: number } | null;
+            const settings = roomRow.settings as {
+              rounds?: number;
+              seconds_per_round?: number;
+            } | null;
+            // category_id is a to-one FK from rooms, so PostgREST embeds a
+            // single object, not an array; null means the "mixed" sentinel
+            // (rooms.category_id is null), not a missing row.
+            const category = roomRow.categories as unknown as { name: string } | null;
             useRoomStore.getState().setRoom({
               id: roomRow.id,
               status: roomRow.status as RoomStatus,
+              name: roomRow.name,
               totalRounds: settings?.rounds ?? 0,
+              secondsPerRound: settings?.seconds_per_round ?? 0,
+              categoryName: category?.name ?? null,
             });
           }
           if (roundRows && roundRows.length > 0) {

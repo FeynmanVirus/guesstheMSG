@@ -14,6 +14,7 @@ import { supabase, ensureAnonSession } from "@/lib/supabase/client";
 import { callFunction } from "@/lib/api";
 import { saveIdentity, saveRoomCode } from "@/lib/identity";
 import type { AvatarId } from "@/lib/avatars";
+import { categoryEmoji } from "@/lib/categories";
 import { parseCustomWords } from "@shared/custom-words";
 import { SETTINGS_BOUNDS } from "@shared/settings";
 import { MIXED_CATEGORY_ID } from "@shared/categories";
@@ -31,15 +32,6 @@ interface Category {
 interface CreateRoomData {
   roomCode: string;
 }
-
-// Category names are plain text in the DB (no emoji baked in, unlike the
-// mockup's chip labels) — this is purely a display lookup, never sent to
-// the server. Anything not in the map falls back to a generic tile.
-const CATEGORY_EMOJI: Record<string, string> = {
-  Movies: "🎬",
-  Food: "🍜",
-  Things: "🧩",
-};
 
 // Time/round chips match SETTINGS_BOUNDS.secondsPerRound's min/default/max
 // exactly — every option here is already server-valid, no clamping surprise.
@@ -95,7 +87,7 @@ export function CreateRoomForm({ displayName, avatarId }: CreateRoomFormProps) {
   const categoryOptions = useMemo(
     () => [
       { id: MIXED_CATEGORY_ID, name: "Mixed", emoji: "🎲" },
-      ...(categories ?? []).map((c) => ({ ...c, emoji: CATEGORY_EMOJI[c.name] ?? "🗂️" })),
+      ...(categories ?? []).map((c) => ({ ...c, emoji: categoryEmoji(c.name) })),
     ],
     [categories],
   );
