@@ -138,8 +138,23 @@ Deno.serve(async (req) => {
 
   const live = room.status === "in_progress" && round !== null;
 
+  // word and mine already came back from guess_context above — the answer
+  // is read with the service role there and never leaves this function.
+  // Hoisted above the spectator/not-live branch below: `word` is null
+  // whenever there's no live round, and normalizeGuess("") can never equal
+  // a non-empty `attempt`, so this is safe to compute unconditionally.
+  const answer = normalizeGuess(word?.answer ?? "");
+  const attempt = normalizeGuess(text);
+
   // --- Not a guess: lobby, recap, ended, or a spectator (§12) -------------
   if (!live || me.is_spectator) {
+    // A spectator (a mid-round joiner) can still see the live clue and type
+    // the real answer — the same leak class the winners'-chat guard below
+    // exists to prevent, just from a viewer instead of a fellow guesser.
+    // Drop it rather than broadcast the answer to everyone still playing.
+    if (live && me.is_spectator && attempt.length > 0 && attempt === answer) {
+      return jsonOk({ kind: "chat", winnersChat: false, dropped: true }, CORS_HEADERS);
+    }
     if (!muted) {
       if (containsProfanity(text)) {
         return jsonErr("PROFANITY_BLOCKED", "Let's keep it friendly.", CORS_HEADERS, {
@@ -150,11 +165,6 @@ Deno.serve(async (req) => {
     }
     return jsonOk({ kind: "chat", winnersChat: false }, CORS_HEADERS);
   }
-
-  // word and mine already came back from guess_context above — the answer
-  // is read with the service role there and never leaves this function.
-  const answer = normalizeGuess(word?.answer ?? "");
-  const attempt = normalizeGuess(text);
 
   // --- Already answered: this is winners' chat ----------------------------
   if (mine) {

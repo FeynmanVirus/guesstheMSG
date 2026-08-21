@@ -196,8 +196,46 @@ const SEEDED_ANSWERS = [
   "star wars", "the matrix", "finding nemo", "harry potter", "shrek",
   "jurassic park", "ghostbusters", "toy story", "titanic", "batman",
   "up", "cars", "wall-e", "willy wonka", "kung fu panda",
-  // Food/Things' 40 single-emoji answers were removed from the seed
-  // migrations in step with 20260820180000_delete_single_emoji_words.sql.
+  // Food/Things' original 40 single-emoji answers were removed from the
+  // seed migrations in step with 20260820180000_delete_single_emoji_words.sql.
+
+  // 20260821173314_seed_country_and_more_words.sql — new Country category
+  // plus the Food/Movies/Things expansion (mirrors seed-words.ts).
+  "australia", "austria", "bangladesh", "belgium",
+  "canada", "chile", "china", "greece",
+  "hungary", "iceland", "india", "japan",
+  "mexico", "morocco", "nepal", "new zealand",
+  "pakistan", "russia", "saudi arabia", "south africa",
+  "spain", "sri lanka", "sweden", "switzerland",
+  "united arab emirates", "united kingdom", "united states", "apple pie",
+  "bacon cheeseburger", "beef stew", "caesar salad", "chicken curry",
+  "corn on the cob", "dumplings", "fish stew", "grilled cheese sandwich",
+  "grilled fish", "lobster", "mac and cheese", "mochi",
+  "nachos", "onigiri", "oysters", "shawarma",
+  "steak", "thanksgiving", "veggie pizza", "a bug's life",
+  "aladdin", "alice in wonderland", "back to the future", "beauty and the beast",
+  "bee movie", "captain america", "charlie and the chocolate factory", "cinderella",
+  "dracula", "fast and furious", "happy feet", "hocus pocus",
+  "how to train your dragon", "inception", "interstellar", "it",
+  "joker", "king kong", "madagascar", "men in black",
+  "moby dick", "pacific rim", "peter pan", "pirates of the caribbean",
+  "polar express", "ratatouille", "robin hood", "rocky",
+  "school of rock", "sherlock holmes", "snow white", "space chimps",
+  "taxi driver", "teen wolf", "the dark knight", "the hunger games",
+  "the incredible hulk", "the little mermaid", "the lord of the rings", "the wizard of oz",
+  "thor", "tom and jerry", "twilight", "venom",
+  "war horse", "whiplash", "wicked", "wonder woman",
+  "world war z", "zombieland", "zootopia", "alarm clock",
+  "arctic", "astronomy", "bahamas", "biotech",
+  "birthday party", "boomerang", "bowling", "braces",
+  "christmas stocking", "early bird", "fever", "fire extinguisher",
+  "fire fighter", "funeral", "glacier", "halloween",
+  "haunted house", "honeycomb", "metamorphosis", "mousetrap",
+  "night owl", "ping pong", "pollination", "poseidon",
+  "rabbit hole", "rock climbing", "sahara desert", "shaving",
+  "skiing", "skydiving", "snowboarding", "soap",
+  "stinky socks", "summer vacation", "the tortoise and the hare", "tooth fairy",
+  "treasure map", "werewolf", "wishing star",
 ];
 
 Deno.test("no seeded answer trips the profanity filter", () => {

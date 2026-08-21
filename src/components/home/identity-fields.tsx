@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Pencil } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogClose, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -17,8 +18,9 @@ interface IdentityFieldsProps {
 
 // DESIGN.md §2.1: name + avatar are required before either home action is
 // available (mockup frame 1a). The avatar grid lives in a centered "pick a
-// face" modal — tapping either the avatar circle or the "avatar" pill opens
-// it; picking a tile applies immediately, "use this one" just dismisses.
+// face" modal — tapping the avatar circle opens it (the pencil badge is
+// just an affordance hint, not a second tap target); picking a tile applies
+// immediately, "use this one" just dismisses.
 export function IdentityFields({
   displayName,
   onDisplayNameChange,
@@ -39,9 +41,17 @@ export function IdentityFields({
         <div className="doodle-panel flex items-center gap-3 px-4 py-3">
           <DialogTrigger
             aria-label="Choose your avatar"
-            className="shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-sky"
+            className="relative shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-sky"
           >
             <Avatar avatarId={avatarId} className="size-[46px] text-2xl" />
+            {/* Edit-affordance badge, not a second tap target — the whole
+                circle is already the DialogTrigger. */}
+            <span
+              aria-hidden
+              className="absolute -right-0.5 -bottom-0.5 flex size-[18px] items-center justify-center rounded-full border-2 border-ink bg-sun"
+            >
+              <Pencil className="size-2.5 text-ink" />
+            </span>
           </DialogTrigger>
 
           <Input
@@ -53,10 +63,6 @@ export function IdentityFields({
             autoComplete="off"
             className="h-auto flex-1 border-0 bg-transparent p-0 font-heading text-xl font-extrabold text-ink shadow-none outline-none focus-visible:ring-0"
           />
-
-          <DialogTrigger className="shrink-0 rounded-full border-[2.5px] border-ink bg-sun px-3.5 py-1.5 text-xs font-bold text-ink">
-            ✏️ avatar
-          </DialogTrigger>
         </div>
 
         <DialogContent

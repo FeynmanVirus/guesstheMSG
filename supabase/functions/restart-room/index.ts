@@ -1,7 +1,12 @@
 // restart-room — host-only "same room, new game" (DESIGN.md §2.8,
 // ARCHITECTURE.md §9). Creates the next game_sessions row (session_number +
 // 1) snapshotting the room's newly-chosen category/settings, resets
-// players.score and is_spectator, and swaps the room's custom word list.
+// players.score and is_spectator, and swaps the room's custom word list —
+// but only when the host actually typed a new one this time. The restart
+// form can't pre-fill its textarea with the room's existing custom words
+// (they're client-unreadable by design, CLAUDE.md rule 1), so a blank box
+// means "keep what's already there," not "clear it" — see the customPairs
+// guard below.
 // Prior rounds/guesses stay attached to their original session, untouched.
 //
 // Ordering is the inverse of start-game's, deliberately: round-tick reads
@@ -177,14 +182,19 @@ Deno.serve(async (req) => {
     }
   }
 
-  // --- Swap the custom word list: delete the room's existing custom
-  // category (cascades to its words), then insert a fresh one if the host
-  // provided new pairs. No rollback on a later failure here — the room is
+  // --- Swap the custom word list, but only if the host provided a new one.
+  // An empty box now means "keep whatever custom words this room already
+  // has" (confirmed product decision — the old unconditional delete below
+  // ran every time, silently destroying the room's custom words on any
+  // restart where the host left the box blank, which is the only thing the
+  // form ever starts as). No rollback on a later failure here — the room is
   // still 'ended', so the host just retries; see the file header comment.
-  await admin.from("categories").delete().eq("room_id", room.id).eq("is_custom", true);
-
   let customWordCount = 0;
   if (customPairs.length > 0) {
+    // Delete the room's existing custom category (cascades to its words)
+    // before inserting the fresh one.
+    await admin.from("categories").delete().eq("room_id", room.id).eq("is_custom", true);
+
     const { data: customCategory, error: customCategoryError } = await admin
       .from("categories")
       .insert({ name: `${room.name} — custom`, is_custom: true, room_id: room.id })

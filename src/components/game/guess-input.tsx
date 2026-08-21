@@ -29,10 +29,11 @@ interface GuessResult {
   kind: "chat" | "guess";
   correct?: boolean;
   points?: number;
-  /** True when a winner pasted the answer into winners' chat — submit-guess
-   * silently drops it rather than republishing it (round-recap.tsx never
-   * shows it either), so there's no real row for the echo to reconcile
-   * against and it must be retracted explicitly. */
+  /** True when the message was the exact answer and submit-guess silently
+   * dropped it rather than republishing it — either a winner pasting it
+   * into winners' chat, or a spectator (mid-round joiner) typing it while
+   * still waiting to become a full player. Either way there's no real row
+   * for the echo to reconcile against, so it must be retracted explicitly. */
   dropped?: boolean;
 }
 

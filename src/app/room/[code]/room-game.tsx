@@ -1,6 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "motion/react";
+import { Eye } from "lucide-react";
 import { useRoundTick } from "@/lib/room/use-round-tick";
 import { useRoomStore } from "@/lib/room/store";
 import { EmojiCard } from "@/components/game/emoji-card";
@@ -72,6 +73,24 @@ export function RoomGame({ roomCode, myPlayerId, isSpectator }: RoomGameProps) {
           <SoundToggle />
         </div>
       </div>
+
+      {/* A late joiner is a spectator for the rest of the round they joined
+          (round-tick only flips them to a full player at the next round
+          boundary, "Late joiners become full players at the next round
+          boundary" below) — CLAUDE.md requires that wait be "called out
+          clearly in the UI ... not a silent failure." The lobby already has
+          this message (room-lobby.tsx), but it's unreachable once the game
+          is in progress; this is the in-round equivalent, visible for the
+          whole time isSpectator is true rather than only in the input's
+          placeholder (which vanishes the instant they start typing). */}
+      {isSpectator && (
+        <div className="flex items-center gap-1.5 max-lg:shrink-0 max-lg:px-3">
+          <Eye className="size-3.5 text-ink-muted" aria-hidden />
+          <p className="text-xs font-semibold text-ink-muted">
+            Spectating — you&apos;ll join at the next round.
+          </p>
+        </div>
+      )}
 
       {/* Desktop: the original 3-column grid, `order-*` on all three direct
           children (unchanged — see the original comment history on why

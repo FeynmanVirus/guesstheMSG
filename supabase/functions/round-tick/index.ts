@@ -35,6 +35,7 @@ import { createAdminClient, createCallerClient } from "../_shared/supabase-admin
 import { normalizeRoomCode, ROOM_CODE_RE } from "../_shared/room-code.ts";
 import { clampSettings, RECAP_SECONDS } from "../_shared/settings.ts";
 import { hintState } from "../_shared/hint.ts";
+import { pickWeightedWord } from "../_shared/word-pool.ts";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
@@ -191,7 +192,7 @@ Deno.serve(async (req) => {
 
     const { data: poolRows } = await admin
       .from("words")
-      .select("id, emoji_sequence, answer")
+      .select("id, category_id, emoji_sequence, answer")
       .in("category_id", categoryIds)
       .eq("retired", false);
 
@@ -208,7 +209,12 @@ Deno.serve(async (req) => {
     // repeat a word or stall.
     if (pool.length === 0) return endGame("pool_exhausted");
 
-    const word = pool[Math.floor(Math.random() * pool.length)];
+    // Category-uniform, not word-uniform (word-pool.ts) — a flat pick over
+    // `pool` weights each category by its own word count, which is what
+    // made "Mixed" skew toward whichever category has the most words and
+    // made a room's own 2-5 custom words nearly invisible against a
+    // 20+-word global category.
+    const word = pickWeightedWord(pool);
 
     // Server-authoritative timing (CLAUDE.md rule 3): both stamps are
     // computed here and written once. The client's countdown is only ever

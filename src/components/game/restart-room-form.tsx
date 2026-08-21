@@ -192,7 +192,9 @@ export function RestartRoomForm({ roomCode }: RestartRoomFormProps) {
 
         {/* Shortened for the compact embedded context (mockup frame 1h's
             version has room for the full sentence) — same info, one line. */}
-        <p className="text-xs text-ink-muted">Blank keeps category words only.</p>
+        <p className="text-xs text-ink-muted">
+          Blank keeps whatever custom words this room already has.
+        </p>
         {customWordsPreview.errors.length > 0 && (
           <p className="text-sm text-coral">
             {customWordsPreview.errors.length} problem

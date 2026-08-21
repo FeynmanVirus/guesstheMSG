@@ -6,6 +6,7 @@ const CATEGORY_EMOJI: Record<string, string> = {
   Movies: "🎬",
   Food: "🍜",
   Things: "🧩",
+  Country: "🌍",
 };
 
 /** `name` is null for the "mixed" sentinel (rooms.category_id is null). */
