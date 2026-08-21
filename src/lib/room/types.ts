@@ -43,6 +43,18 @@ export interface RoundInfo {
   revealedAnswer: string | null;
 }
 
+/** The letter-hint mask for the current live round, delivered on
+ * round-tick's own HTTP response (see use-round-tick.ts) — never a
+ * realtime broadcast or a column on `rounds`, since either of those would
+ * replicate future letters to every member the instant they're computed.
+ * `roundId` guards a response for the previous round arriving late. */
+export interface RoundHint {
+  roundId: string;
+  /** The answer with unrevealed letters as `_`; punctuation/spaces literal. */
+  mask: string;
+  nextRevealAt: string | null;
+}
+
 /** One row of the combined chat/guess stream. `visibility: 'correct'` rows
  * are the winners' chat — RLS means a player who hasn't guessed correctly
  * never receives them at all, so this field is for styling, not filtering.

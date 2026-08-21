@@ -18,10 +18,10 @@ interface GuessInputProps {
   /** For the optimistic echo's playerId. Null only in the impossible
    * pre-bootstrap case, where the echo is simply skipped. */
   myPlayerId: string | null;
-  /** Null on screens with no round concept (game-results.tsx). Only used to
-   * notice a new round has started so `solved`/`error` can reset — see the
-   * comment above the render-phase check below for why this isn't a `key`
-   * on the component instead. */
+  /** Null on screens with no round concept (game-results.tsx). Used to
+   * notice a new round has started so `error` can reset (see the
+   * render-phase check below) and to scope `solved` to this round via the
+   * store's `solvedRoundId` — see the comment above the component. */
   roundId: string | null;
 }
 
@@ -65,8 +65,16 @@ const PENDING_TIMEOUT_MS = 4000;
 // remount it and reset `solved` for free. That also wiped `text` and
 // dropped focus on every round transition — losing whatever a player was
 // mid-typing the instant a round ended. Now the parent never remounts this;
-// instead `roundId` is a prop, and `solved`/`error` reset via the "adjust
-// state during render" pattern below, leaving `text` alone.
+// instead `roundId` is a prop, and `error` resets via the "adjust state
+// during render" pattern below, leaving `text` alone.
+//
+// The mobile layout (room-game.tsx) mounts TWO of these — one hidden per
+// breakpoint, since a full-viewport-width input bar can't live inside a
+// half-width chat column. Only one is ever visible, so only one is ever
+// typed into, but both must show the same "Correct!" state the instant
+// either one's submit resolves. `solved` therefore lives in the room store
+// as `solvedRoundId` (compared against this instance's `roundId`, which
+// doubles as the per-round reset) rather than local state — see store.ts.
 //
 // A muted player's echo deliberately never reconciles: submit-guess accepts
 // and silently drops their message (no chat_messages row is ever written —
@@ -80,17 +88,19 @@ const PENDING_TIMEOUT_MS = 4000;
 export function GuessInput({ roomCode, live, isSpectator, myPlayerId, roundId }: GuessInputProps) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [solved, setSolved] = useState(false);
   const [flash, setFlash] = useState(false);
+  const solvedRoundId = useRoomStore((s) => s.solvedRoundId);
+  const solved = roundId !== null && solvedRoundId === roundId;
 
   // Adjust state during render (React's documented alternative to an effect
   // for "reset state when a prop changes") rather than remounting via a
-  // `key` — this is what lets `solved`/`error` reset on a new round while
-  // `text` (and DOM focus) survive the transition untouched.
+  // `key` — this is what lets `error` reset on a new round while `text`
+  // (and DOM focus) survive the transition untouched. `solved` needs no
+  // entry here — it's derived from solvedRoundId above, which is already
+  // per-round by construction.
   const [prevRoundId, setPrevRoundId] = useState(roundId);
   if (roundId !== prevRoundId) {
     setPrevRoundId(roundId);
-    setSolved(false);
     setError(null);
   }
 
@@ -103,7 +113,8 @@ export function GuessInput({ roomCode, live, isSpectator, myPlayerId, roundId }:
     if (!value) return;
 
     const echoId = `${LOCAL_ECHO_PREFIX}${crypto.randomUUID()}`;
-    const { addMessage, removeMessage, settlePending, serverOffsetMs } = useRoomStore.getState();
+    const { addMessage, removeMessage, settlePending, setSolvedRoundId, serverOffsetMs } =
+      useRoomStore.getState();
     if (myPlayerId) {
       addMessage({
         id: echoId,
@@ -140,7 +151,7 @@ export function GuessInput({ roomCode, live, isSpectator, myPlayerId, roundId }:
       if (result.data.correct || result.data.dropped) removeMessage(echoId);
 
       if (result.data.correct) {
-        setSolved(true);
+        if (roundId) setSolvedRoundId(roundId);
         setFlash(true);
         playDing();
         window.setTimeout(() => setFlash(false), 1200);

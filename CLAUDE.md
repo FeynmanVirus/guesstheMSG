@@ -93,7 +93,7 @@ Use at most one accent color per component. No gradients. No heavy/dark drop sha
 
 **Motion:** Framer Motion, spring easing (roughly `stiffness: 300, damping: 20`), used for entrances and the leaderboard's reordering (`layout` animations). Keep motion purposeful: only one element should be animating to draw attention at a time.
 
-**Layout:** centered single column, max content width roughly 640–720px on game screens, generous padding (24–32px), minimal navigation chrome (small home link only) — this is a focused single-purpose app, not a multi-page product.
+**Layout:** centered single column, max content width roughly 640–720px on game screens, generous padding (24–32px), minimal navigation chrome (small home link only) — this is a focused single-purpose app, not a multi-page product. (The round loop's mobile layout has since moved off this single-column stack to a bounded, non-scrolling skribbl-style shell — DESIGN.md §2.4 has the current spec.)
 
 **Accessibility guardrail:** despite the light/pastel palette, keep text-on-background contrast at WCAG AA, and never rely on color alone to distinguish correct/incorrect or connected/disconnected — pair color with an icon or label.
 

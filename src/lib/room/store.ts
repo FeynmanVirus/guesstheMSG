@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { ChatMessage, RoomInfo, RoomPlayer, RoundInfo } from "@/lib/room/types";
+import type { ChatMessage, RoomInfo, RoomPlayer, RoundHint, RoundInfo } from "@/lib/room/types";
 
 const MAX_MESSAGES = 200;
 
@@ -9,6 +9,16 @@ interface RoomState {
   players: Map<string, RoomPlayer>;
   room: RoomInfo | null;
   round: RoundInfo | null;
+  /** Written only by use-round-tick.ts, off round-tick's own HTTP response
+   * — never by useRoomChannel, so it can't race the realtime round update. */
+  hint: RoundHint | null;
+  /** The round id GuessInput last got a correct-guess response for. Lives
+   * here instead of GuessInput's own local state because the mobile layout
+   * mounts two GuessInput instances (one hidden per breakpoint — see
+   * room-game.tsx) that must agree on "solved" without either one knowing
+   * the other exists. Compared against a round's id, not a bare boolean, so
+   * it doubles as its own per-round reset — no separate effect needed. */
+  solvedRoundId: string | null;
   messages: ChatMessage[];
   presentIds: Set<string>;
   presenceSynced: boolean;
@@ -23,6 +33,8 @@ interface RoomState {
   mergePlayers: (players: RoomPlayer[]) => void;
   setRoom: (room: RoomInfo | null) => void;
   setRound: (round: RoundInfo | null) => void;
+  setHint: (hint: RoundHint | null) => void;
+  setSolvedRoundId: (roundId: string | null) => void;
   addMessage: (message: ChatMessage) => void;
   removeMessage: (id: string) => void;
   settlePending: (id: string) => void;
@@ -83,6 +95,8 @@ const initial = {
   players: new Map<string, RoomPlayer>(),
   room: null,
   round: null,
+  hint: null as RoundHint | null,
+  solvedRoundId: null as string | null,
   messages: [] as ChatMessage[],
   presentIds: new Set<string>(),
   presenceSynced: false,
@@ -123,6 +137,8 @@ export const useRoomStore = create<RoomState>((set) => ({
 
   setRoom: (room) => set({ room }),
   setRound: (round) => set({ round }),
+  setHint: (hint) => set({ hint }),
+  setSolvedRoundId: (roundId) => set({ solvedRoundId: roundId }),
 
   addMessage: (message) =>
     set((state) => {
@@ -171,7 +187,15 @@ export const useRoomStore = create<RoomState>((set) => ({
   setConnection: (connection) => set({ connection }),
   setServerOffset: (serverOffsetMs) => set({ serverOffsetMs }),
 
-  reset: () => set({ ...initial, players: new Map(), presentIds: new Set(), messages: [] }),
+  reset: () =>
+    set({
+      ...initial,
+      players: new Map(),
+      presentIds: new Set(),
+      messages: [],
+      hint: null,
+      solvedRoundId: null,
+    }),
 }));
 
 /** Players sorted for the lobby list: host first, then seat age. */

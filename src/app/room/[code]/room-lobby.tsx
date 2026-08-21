@@ -124,8 +124,16 @@ export function RoomLobby({ code }: RoomLobbyProps) {
   if (room.status === "in_progress") {
     // RoomGame owns its own wide shell end to end (header, timer, sound
     // toggle included) — nothing to wrap it in here.
+    //
+    // max-lg:p-0 max-lg:screen-dvh max-lg:overflow-hidden: RoomGame's own
+    // mobile shell (room-game.tsx) is viewport-bounded and edge-to-edge —
+    // this wrapper's default padding would push it past the viewport, and
+    // pinning this wrapper's own height (rather than trusting flex-1 to
+    // land on exactly the same value RoomGame computes) is what keeps the
+    // page from picking up a sliver of extra scroll room on its own.
+    // Desktop is untouched — none of this is active above `lg`.
     return (
-      <div className="flex flex-1 flex-col items-center px-4 py-6 sm:px-6 sm:py-8">
+      <div className="flex flex-1 flex-col items-center px-4 py-6 sm:px-6 sm:py-8 max-lg:p-0 max-lg:screen-dvh max-lg:overflow-hidden">
         <RoomGame roomCode={code} myPlayerId={myPlayerId} isSpectator={me.isSpectator} />
       </div>
     );

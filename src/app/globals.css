@@ -197,3 +197,17 @@
     transform: scale(0.97);
   }
 }
+
+/* True viewport height with a fallback for browsers without dvh support —
+ * 100vh alone doesn't account for a mobile browser's collapsing address
+ * bar, which is what makes the mobile round-loop shell (room-game.tsx)
+ * either clip content or leave a gap as the bar shows/hides. A two-class
+ * `h-[100vh] h-[100dvh]` pair has undefined cascade order since Tailwind
+ * doesn't guarantee declaration order between two arbitrary-value
+ * utilities, so this is one utility with both declarations in source order
+ * instead — the second wins in any browser that understands dvh, and the
+ * first is what's left for one that doesn't. */
+@utility screen-dvh {
+  height: 100vh;
+  height: 100dvh;
+}

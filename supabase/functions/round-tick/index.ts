@@ -18,7 +18,15 @@
 //
 // Request:  { roomCode }
 // Success:  { state: 'live'|'recap'|'ended', roundId?, roundNumber?, endsAt?,
-//             totalRounds }
+//             totalRounds, hintMask?, nextRevealAt? }
+//
+// `hintMask`/`nextRevealAt` only ever ride along on a `state: 'live'`
+// response — computed fresh from the real answer and this request's own
+// clock (hint.ts), never written to any table or broadcast. Every member
+// already polls this response on a timer (use-round-tick.ts used to
+// discard it) — that per-client HTTP round trip is the mask's only
+// delivery path, so an unrevealed letter is never present anywhere clients
+// share (CLAUDE.md rule 1, same reasoning as the reveal_answer column).
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { handlePreflight, CORS_HEADERS } from "../_shared/cors.ts";
@@ -26,6 +34,7 @@ import { jsonOk, jsonErr } from "../_shared/errors.ts";
 import { createAdminClient, createCallerClient } from "../_shared/supabase-admin.deno.ts";
 import { normalizeRoomCode, ROOM_CODE_RE } from "../_shared/room-code.ts";
 import { clampSettings, RECAP_SECONDS } from "../_shared/settings.ts";
+import { hintState } from "../_shared/hint.ts";
 
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
@@ -106,9 +115,11 @@ Deno.serve(async (req) => {
     return jsonErr("INVALID_ROOM_STATE", "This game has no session yet.", CORS_HEADERS);
   }
 
+  // words(answer) embeds via the word_id FK — the only extra read needed to
+  // compute a live hint mask; the answer itself never leaves this function.
   const { data: round } = await admin
     .from("rounds")
-    .select("id, round_number, word_id, started_at, ends_at, revealed_at")
+    .select("id, round_number, word_id, started_at, ends_at, revealed_at, words(answer)")
     .eq("game_session_id", session.id)
     .order("round_number", { ascending: false })
     .limit(1)
@@ -117,6 +128,18 @@ Deno.serve(async (req) => {
   const now = new Date();
 
   // ---- helpers -----------------------------------------------------------
+
+  function liveHint(roundId: string, answer: string | undefined, startedAt: string, endsAt: string) {
+    if (!answer) return {};
+    const { mask, nextRevealAt } = hintState(
+      answer,
+      roundId,
+      new Date(startedAt).getTime(),
+      new Date(endsAt).getTime(),
+      now.getTime(),
+    );
+    return { hintMask: mask, nextRevealAt };
+  }
 
   async function endGame(reason: "complete" | "pool_exhausted") {
     const endedAt = now.toISOString();
@@ -168,7 +191,7 @@ Deno.serve(async (req) => {
 
     const { data: poolRows } = await admin
       .from("words")
-      .select("id, emoji_sequence")
+      .select("id, emoji_sequence, answer")
       .in("category_id", categoryIds)
       .eq("retired", false);
 
@@ -215,7 +238,7 @@ Deno.serve(async (req) => {
       if (insertError.code === "23505") {
         const { data: existing } = await admin
           .from("rounds")
-          .select("id, round_number, ends_at")
+          .select("id, round_number, started_at, ends_at, words(answer)")
           .eq("game_session_id", session!.id)
           .is("revealed_at", null)
           .maybeSingle();
@@ -227,6 +250,7 @@ Deno.serve(async (req) => {
               roundNumber: existing.round_number,
               endsAt: existing.ends_at,
               totalRounds,
+              ...liveHint(existing.id, existing.words?.answer, existing.started_at, existing.ends_at),
             },
             CORS_HEADERS,
           );
@@ -252,6 +276,7 @@ Deno.serve(async (req) => {
         roundNumber: created.round_number,
         endsAt: created.ends_at,
         totalRounds,
+        ...liveHint(created.id, word.answer, startedAt, created.ends_at),
       },
       CORS_HEADERS,
     );
@@ -314,6 +339,7 @@ Deno.serve(async (req) => {
         roundNumber: round.round_number,
         endsAt: round.ends_at,
         totalRounds,
+        ...liveHint(round.id, round.words?.answer, round.started_at, round.ends_at),
       },
       CORS_HEADERS,
     );

@@ -67,16 +67,19 @@ export function RoundRecap({ round }: RoundRecapProps) {
   });
 
   return (
-    <div className="doodle-panel flex min-h-[420px] flex-col items-center gap-2.5 p-5 text-center lg:min-h-[560px]">
-      <p className="text-xs font-bold tracking-[0.16em] text-ink-muted uppercase">
+    // max-lg:h-full max-lg:min-h-0: matches emoji-card.tsx's mobile floor
+    // swap — the stage cell (room-game.tsx) caps this at 36dvh on a phone,
+    // and the recap has to fit inside that same cap when it's showing.
+    <div className="doodle-panel flex min-h-[420px] flex-col items-center gap-2.5 p-5 text-center max-lg:h-full max-lg:min-h-0 max-lg:justify-center max-lg:gap-1.5 max-lg:py-3 lg:min-h-[560px]">
+      <p className="text-xs font-bold tracking-[0.16em] text-ink-muted uppercase max-lg:hidden">
         round {round.roundNumber} solved
       </p>
-      <Squiggle color="lavender" width={160} />
-      <p className="mt-1 font-heading text-3xl font-bold text-ink capitalize">
+      <Squiggle color="lavender" width={160} className="max-lg:hidden" />
+      <p className="mt-1 font-heading text-3xl font-bold text-ink capitalize max-lg:mt-0 max-lg:text-xl">
         {round.revealedAnswer ?? "…"}
       </p>
 
-      <div className="flex w-full flex-1 items-end px-4">
+      <div className="flex w-full flex-1 items-end px-4 max-lg:flex-none max-lg:px-0">
         {top === undefined ? null : entries.length > 0 ? (
           <Podium entries={entries} />
         ) : (
@@ -84,7 +87,7 @@ export function RoundRecap({ round }: RoundRecapProps) {
         )}
       </div>
 
-      <p className="w-full border-t-2 border-dashed border-hairline pt-3.5 text-sm font-semibold text-ink-muted">
+      <p className="w-full border-t-2 border-dashed border-hairline pt-3.5 text-sm font-semibold text-ink-muted max-lg:hidden">
         next round starting…
       </p>
     </div>
