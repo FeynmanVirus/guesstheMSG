@@ -144,7 +144,6 @@ Deno.serve(async (req) => {
       .insert({
         code: candidate,
         name: roomName,
-        password_hash: passwordHash,
         status: "lobby",
         category_id: isMixed ? null : categoryId,
         settings,
@@ -177,6 +176,21 @@ Deno.serve(async (req) => {
   const rollback = async () => {
     await admin.from("rooms").delete().eq("id", roomId);
   };
+
+  // password_hash lives in its own table now, never on rooms — see
+  // 20260822090000_move_password_hash_off_rooms.sql: rooms is in the
+  // supabase_realtime publication, and Postgres Changes broadcasts full WAL
+  // rows to subscribers regardless of column-level grants, so the hash
+  // can't safely sit on a realtime-replicated table at all.
+  if (passwordHash) {
+    const { error: passwordError } = await admin
+      .from("room_passwords")
+      .insert({ room_id: roomId, password_hash: passwordHash });
+    if (passwordError) {
+      await rollback();
+      return jsonErr("INTERNAL_ERROR", "Could not create the room.", CORS_HEADERS);
+    }
+  }
 
   let customWordCount = 0;
   if (customPairs.length > 0) {

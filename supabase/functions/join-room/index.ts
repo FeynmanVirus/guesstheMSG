@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
 
   const { data: room, error: roomError } = await admin
     .from("rooms")
-    .select("id, status, password_hash, settings")
+    .select("id, status, settings")
     .eq("code", code)
     .maybeSingle();
 
@@ -93,13 +93,23 @@ Deno.serve(async (req) => {
   // already satisfied once, so a refreshing tab never has to re-enter it —
   // this is what makes the silent-reconnect promise (DESIGN.md §2.9) work.
   if (!existingPlayer) {
-    if (room.password_hash) {
+    // password_hash lives in its own table, never on rooms — see
+    // 20260822090000_move_password_hash_off_rooms.sql. Looked up here, not
+    // as part of the room select above, since it's only ever needed on this
+    // branch (a rejoining player never re-enters a password).
+    const { data: roomPassword } = await admin
+      .from("room_passwords")
+      .select("password_hash")
+      .eq("room_id", room.id)
+      .maybeSingle();
+
+    if (roomPassword) {
       if (!password) {
         return jsonErr("PASSWORD_REQUIRED", "This room needs a password.", CORS_HEADERS);
       }
       const { data: verified, error: verifyError } = await admin.rpc("verify_password", {
         password,
-        password_hash: room.password_hash,
+        password_hash: roomPassword.password_hash,
       });
       if (verifyError || !verified) {
         return jsonErr("INVALID_PASSWORD", "That password isn't right.", CORS_HEADERS, {
