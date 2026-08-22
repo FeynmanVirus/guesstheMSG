@@ -27,31 +27,67 @@ import { normalizeGuess, scoreGuess, FIRST_GUESS_BONUS } from "../_shared/guess.
 
 const MAX_MESSAGE_LENGTH = 200;
 
+// Debug timing, off in normal operation: gated on a per-request header a
+// real player's client never sends, so it never appears in a production
+// response. Not gated on a Supabase secret as well — the payload is just
+// millisecond breakdowns (no PII, no game state), and this repo has no
+// tooling wired up to provision one. Used for the profiling pass described
+// in ARCHITECTURE.md's performance notes.
+const DEBUG_TIMING_HEADER = "x-debug-timing";
+const DEBUG_TIMING_VALUE = "guessmoji-profiling-2026";
+
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
   if (preflight) return preflight;
 
+  const debugTimingRequested = req.headers.get(DEBUG_TIMING_HEADER) === DEBUG_TIMING_VALUE;
+  const t0 = performance.now();
+  const timings: Record<string, number> = {};
+  const mark = (label: string) => {
+    if (debugTimingRequested) timings[label] = performance.now() - t0;
+  };
+
+  const response = await handleGuess(req, mark);
+
+  if (debugTimingRequested) {
+    const headers = new Headers(response.headers);
+    for (const [label, ms] of Object.entries(timings)) {
+      headers.set(`X-Timing-${label}`, ms.toFixed(1));
+    }
+    headers.set("X-Timing-total", (performance.now() - t0).toFixed(1));
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  }
+  return response;
+});
+
+async function handleGuess(req: Request, mark: (label: string) => void): Promise<Response> {
   if (req.method !== "POST") {
     return jsonErr("METHOD_NOT_ALLOWED", "Use POST.", CORS_HEADERS);
   }
 
+  const admin = createAdminClient();
+
+  // TRIED AND REVERTED: local JWT verification via auth.getClaims() instead
+  // of this network call. In theory getClaims() should verify locally via a
+  // cached JWKS set (this project uses asymmetric ES256 keys, confirmed
+  // against /auth/v1/.well-known/jwks.json, so it's eligible for the fast
+  // path) — but measured against this deployment across 80 real requests
+  // (2 runs x 20 sequential, 2 runs x 20 sequential control, plus a 15-way
+  // concurrent burst), only 1 request out of 55 getClaims() calls ever hit a
+  // warm cache; every other one paid a fresh JWKS fetch, making it slightly
+  // *slower* on average than this getUser() call, not faster. Isolates in
+  // this Supabase Edge Functions deployment don't appear to stay warm long
+  // enough — under sequential OR concurrent load — for the documented
+  // benefit to materialize. See ARCHITECTURE.md's performance notes for the
+  // full before/after numbers. Don't re-attempt this without re-measuring.
   const caller = createCallerClient(req);
   // Kicked off now rather than after body parsing, so this GoTrue network
   // hop overlaps with the (fast, synchronous-ish) req.json() + room-code
   // validation below instead of waiting behind them.
-  //
-  // It can NOT be overlapped with guess_context (the next network hop,
-  // below) — that RPC takes p_auth_user_id: user.id as an argument, so it
-  // structurally needs this to resolve first. A version of this comment
-  // used to claim otherwise; it was wrong. Cutting that hop for real means
-  // either verifying the JWT locally instead of calling GoTrue over the
-  // network (removes the hop entirely, but is a security-sensitive change —
-  // deliberately not done here without a dedicated look) or merging
-  // guess_context + record_guess into one RPC (saves a different hop — see
-  // that function's own comment). It stays a fully awaited step regardless
-  // — it's the only authorization boundary in this function, since
-  // everything after runs on the service-role client, which bypasses RLS
-  // entirely.
   const userPromise = caller.auth.getUser();
 
   let body: Record<string, unknown>;
@@ -78,12 +114,12 @@ Deno.serve(async (req) => {
     });
   }
 
-  const admin = createAdminClient();
-
   const {
     data: { user },
   } = await userPromise;
-  if (!user) {
+  mark("auth");
+  const callerId = user?.id;
+  if (!callerId) {
     return jsonErr("UNAUTHENTICATED", "Sign in required.", CORS_HEADERS);
   }
 
@@ -95,8 +131,9 @@ Deno.serve(async (req) => {
   // is expressed as joins instead of sequential awaits.
   const { data: ctx } = await admin.rpc("guess_context", {
     p_code: code,
-    p_auth_user_id: user.id,
+    p_auth_user_id: callerId,
   });
+  mark("context");
   const room = ctx?.room ?? null;
   const me = ctx?.player ?? null;
   const round = ctx?.round ?? null;
@@ -220,6 +257,7 @@ Deno.serve(async (req) => {
       p_base_score: 0,
       p_first_guess_bonus: FIRST_GUESS_BONUS,
     });
+    mark("record");
     return jsonOk({ kind: "guess", correct: false }, CORS_HEADERS);
   }
 
@@ -264,6 +302,7 @@ Deno.serve(async (req) => {
     p_base_score: baseScore,
     p_first_guess_bonus: FIRST_GUESS_BONUS,
   });
+  mark("record");
 
   if (rpcError || !result) {
     return jsonErr("INTERNAL_ERROR", "Could not record that guess.", CORS_HEADERS);
@@ -273,4 +312,4 @@ Deno.serve(async (req) => {
     { kind: "guess", correct: true, points: result.points, alreadyCorrect: result.alreadyCorrect },
     CORS_HEADERS,
   );
-});
+}

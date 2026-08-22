@@ -7,8 +7,13 @@
 
 export const CORS_HEADERS: HeadersInit = {
   "Access-Control-Allow-Origin": "*",
+  // x-region: supabase-js sets this on every invoke() call that pins a
+  // region (ARCHITECTURE.md §18's region-pin) — supabase.functions.invoke's
+  // own client always sends it alongside the forceFunctionRegion query
+  // param, not one or the other, so it has to be allow-listed here or the
+  // browser's preflight rejects the request before it reaches this code.
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-region",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   // Without this, the browser re-runs the OPTIONS preflight before every
   // single invoke — measured at ~157ms p50 in production logs, paid on

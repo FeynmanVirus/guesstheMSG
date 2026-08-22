@@ -221,3 +221,46 @@ Scoring formulas and string normalization are unit-testable independent of any E
 ## 17. Stack adoption timing (deviation from §1, recorded not silently skipped)
 
 Zustand and Framer Motion, named in §1, were adopted in Phase 4 as planned — the round loop's timer, leaderboard, and chat stream are exactly the shared-state-plus-coordinated-animation case they were deferred for. `src/lib/room/store.ts` is a single module-level Zustand store (one room per page load, so no per-room instancing); `useRoomChannel` writes into it, components read via selectors. One sharp edge worth recording: a selector that builds a fresh array on every call (e.g. `Array.from(map.values()).filter(...)`) breaks React's `useSyncExternalStore` snapshot-caching contract and produces an actual "getSnapshot should be cached" render loop, not just a lint nit — wrap it in `useShallow` from `zustand/react/shallow` (see `leaderboard.tsx`/`game-results.tsx`), or select the raw `Map`/array and derive in a `useMemo` instead.
+
+## 18. Performance notes — `submit-guess` latency profiling (2026-08-22)
+
+A DO/Cloudflare Workers migration was considered as a fix for guess/chat latency and ruled out by direct measurement (raw WebSocket transport — both Supabase Realtime and a Cloudflare DO — measured 36-84ms p50 from India; nowhere close to the ~740-1000ms actually observed). That meant the cost was inside `submit-guess`'s own request handling, not transport. Profiled with debug-timing instrumentation (`X-Debug-Timing` request header, gated per-request, no Supabase secret involved — see the constants at the top of `submit-guess/index.ts`) against 80+ real deployed requests, 4 separate runs plus a 15-way concurrent burst.
+
+**Regions**: the Edge Function executes in `ap-south-1` (Mumbai — confirmed via the `x-sb-edge-region` response header on every request). The Postgres database geolocates to AWS `ap-northeast-2` (Seoul) via its resolved server IP (`AS16509 Amazon.com`, city Incheon). Test traffic originated from Jaipur, India. This is a genuine cross-region mismatch: every RPC call in `submit-guess` crosses Mumbai↔Seoul, not a same-region hop. **This turned out to be the single largest lever available** — see the region-pin results below, acted on after this was written.
+
+**Auth verification — tried `auth.getClaims()`, reverted.** `submit-guess` already runs with `verify_jwt: true` at the platform level (Supabase rejects a bad JWT before the function body ever executes), and this project signs JWTs with asymmetric ES256 keys (checked directly against `/auth/v1/.well-known/jwks.json`), which made it a candidate for `getClaims()`'s documented local-verification fast path — no network call, instead of `auth.getUser()`'s ~110-180ms round trip to GoTrue. Measured instead of assumed:
+
+| | auth stage avg | auth stage p50 | auth stage p95 | server total avg |
+|---|---|---|---|---|
+| `getUser()` (control, 2×20 runs) | 178.8ms | 173.2ms | 213.3ms | 562.6ms |
+| `getClaims()` (fix, 2×20 runs) | 198.8ms | 178.3ms | 328.1ms | 640.8ms |
+
+`getClaims()` measured *slower* on average and at p95, not faster. Across 55 `getClaims()` calls total (2 sequential runs + a 15-way concurrent burst), only **1** ever hit a warm JWKS cache (1.4ms — proof the fast path is real and reachable); every other call paid a fresh JWKS fetch. Isolates in this Supabase Edge Functions deployment don't stay warm long enough between requests — under sequential *or* concurrent load — for the documented caching benefit to materialize. Reverted to `auth.getUser()`; the code carries a comment at the revert site with the same numbers, so this isn't silently rediscovered later. If Supabase's isolate-reuse behavior changes, or if this needs revisiting, re-measure — don't re-apply on the strength of the docs alone, since that's exactly what didn't hold here.
+
+**RPC round trips (`guess_context` + `record_guess`) are the largest server-side cost**, ~190-240ms each, together roughly 65-70% of server total — consistent with the region mismatch above, since each is a Mumbai→Seoul round trip. Merging them into a single RPC (deferred previously — see the "revisit" note in §14's `submit-guess` description) would save one cross-region hop, but region alignment would cut the cost of *both* remaining hops; do that first and re-measure before deciding the RPC merge is still worth its risk (it duplicates scoring logic into `plpgsql`, outside the unit-tested TypeScript in `_shared/guess.ts`).
+
+**Client-observed total also includes ~200-400ms of TLS/connection overhead** on top of server processing time (measured via `curl`'s `time_total` minus the server-reported total) — cold TCP+TLS handshake cost per request from this network, separate from anything server-side.
+
+### Region pin — measured, adopted (2026-08-22, follow-up)
+
+Supabase supports per-invocation region forcing (`region` option on `supabase.functions.invoke()`, or `x-region`/`forceFunctionRegion` on a raw request — [Regional Invocations](https://supabase.com/docs/guides/functions/regional-invocation)). No India region exists in Supabase's list — `ap-south-1` (Mumbai) is already the nearest to this test network, so `ap-northeast-2` (Seoul, matching the database) was the candidate, not a nearer alternative. Tested against the already-deployed `submit-guess` with no redeploy needed — `forceFunctionRegion` is a caller-supplied query param — 40 real requests per condition (2×20), same room/round-creation flow as the auth test above:
+
+| | auth stage p50 | context RPC p50 | record RPC p50 | server total p50 | server total p95 |
+|---|---|---|---|---|---|
+| `ap-south-1` (auto-routed) | 174.3ms | 194.2ms | 191.3ms | 565.1ms | 1396.3ms |
+| `ap-northeast-2` (forced) | 54.2ms | 31.4ms | 28.6ms | 122.1ms | 180.7ms |
+
+78% faster median server total, and notably the RPC stages alone dropped 84-85% — confirms the cross-region-mismatch theory directly, not just correlated with it. The `auth.getUser()` GoTrue call also got faster (69%), meaning GoTrue is colocated with (or close to) the database's region too, not globally centralized.
+
+**Client-to-edge cost was checked explicitly**, since forcing a non-default region could in principle cost more in client-to-server network time than it saves in server processing — the concern that would make this a wash instead of a win. Measured with `curl --next` chaining 20 requests over one *reused* TLS connection (matching how a real browser session behaves — a fresh-connection-per-request test, which is what the numbers above and in the auth section otherwise use, overstates real per-guess client cost since a game session doesn't reconnect on every guess):
+
+| | server total (reused conn.) | client-observed total (reused conn.) | gap (network layer) |
+|---|---|---|---|
+| `ap-south-1` (auto-routed) | 565ms p50 | 745.5ms p50 | ~175ms |
+| `ap-northeast-2` (forced) | 111ms p50 | 479.6ms p50 | ~363ms |
+
+The network-layer gap roughly doubles when forcing Seoul — real cost, not noise. Verified as genuine physical distance rather than a Supabase-internal inefficiency: a raw, unauthenticated request to AWS's own `ap-northeast-2` S3 endpoint from this same network measured ~300ms TTFB even warm, vs ~70ms to `ap-south-1` S3 — matching the gap almost exactly. **Even so, the net client-observed total is still ~266ms faster (745.5ms → 479.6ms, ~35% improvement)** — the RPC/auth savings outweigh the added network cost for this test's own network, so the fix is adopted: `src/lib/api.ts`'s `callFunction()` (the single wrapper all 7 Edge Function calls route through — `create-room`, `join-room`, `promote-host`, `start-game`, `round-tick`, `submit-guess`, `restart-room`) now passes `region: FunctionRegion.ApNortheast2` on every invoke.
+
+**Does this hit the 150-200ms target?** Server-side, yes — p50 122ms, p95 180.7ms, both inside the target. End-to-end from this specific network, no — ~480ms client-observed even in the best case (warm connection), because ~363ms of that is the physical network round trip from Jaipur to Seoul, which no amount of Edge Function optimization touches. That floor is a function of *where the player is*, not where the code runs: a player physically closer to Seoul would see something close to the 150-200ms target end-to-end; a player as far as this test's network won't, regardless of further server-side work. If sub-200ms end-to-end for India-based (or otherwise Seoul-distant) players specifically is a hard requirement, the only lever left is moving the database itself closer to players — a materially bigger operation (new project + data migration, not an in-place region change) that needs its own dedicated planning, not something to fold into this pass. Region-pinning `submit-guess` (and the other 6 functions) is adopted regardless, since it's a clear win for every player independent of where the database ultimately ends up.
+
+One documented trade-off from Supabase's own docs: an explicitly-pinned region does **not** auto-failover to another region during an outage, unlike automatic nearest-region routing. Accepted as worth it given the measured win; revisit if `ap-northeast-2` has a notable outage history.
